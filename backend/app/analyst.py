@@ -1,4 +1,5 @@
 """Logbook analyst (V4-5 + v4.1 §3): Large 4 high, strict json_schema.
+Runs on the Mistral Agents SDK (bonus track).
 
 Groups the agent's open logbook entries by root cause using `mistral-embed`
 similarity (cosine >= SIMILARITY_THRESHOLD merges entries), then asks the main
@@ -7,6 +8,11 @@ root cause and 2-3 quotes, and per entry a breaking moment (message index +
 one-line reason), the detected caller persona and the tactic family. It also
 reports the failure rate per language. The analyst explains only: the output
 schema has no fix/suggestion field, and it is never used for scoring.
+
+The analysis runs as a Mistral Agents SDK agent (`mistralai.agents.Agent` with
+`output_type=Analysis`, model from config); if the SDK call fails for any
+reason the same request falls back to a strict `json_schema` chat-completions
+call through `LLMClient`, so tests stay on fakes.
 """
 
 from __future__ import annotations
@@ -128,13 +134,45 @@ _SYSTEM = (
 )
 
 
+async def _agents_sdk_run(system: str, payload: str) -> Analysis:
+    """Run the analyst as a Mistral Agents SDK agent (bonus track).
+
+    `agents.Agent(model=<main model>, instructions=system, reasoning_effort=
+    "high", output_type=Analysis)`; the structured `output` is the Analysis.
+    """
+    from mistralai import agents as mistral_agents
+
+    agent = mistral_agents.Agent(
+        model=settings.mistral_model_main,
+        name="redroom-analyst",
+        instructions=system,
+        reasoning_effort="high",
+        output_type=Analysis,
+    )
+    result = await agent.run(payload, timeout=ANALYST_TIMEOUT_S)
+    output = getattr(result, "output", None)
+    if isinstance(output, Analysis):
+        return output
+    if output is not None:
+        return Analysis.model_validate(output)
+    return Analysis.model_validate_json(result.text)
+
+
+AgentRunFn = Callable[[str, str], Awaitable[Analysis]]
+
+
 async def analyze(
     llm: LLMClient,
     embed_fn: Callable[[list[str]], Awaitable[list[list[float]]]],
     entries: list[LogbookEntry],
     runs_by_id: dict[str, Run],
+    agent_run: AgentRunFn | None = None,
 ) -> Analysis:
-    """Group open entries by root cause and explain them. No fix suggestions."""
+    """Group open entries by root cause and explain them. No fix suggestions.
+
+    Tries the Mistral Agents SDK first (`agent_run`, default the real SDK
+    agent); on any failure falls back to the chat-completions `llm`.
+    """
     if not entries:
         return Analysis(groups=[], entries=[], languages=_language_failures(entries, runs_by_id))
     texts = [_entry_text(e, runs_by_id) for e in entries]
@@ -149,14 +187,19 @@ async def analyze(
             for idxs in clusters
         ]
     }
-    result: Analysis = await llm.json(
-        model=settings.mistral_model_main,
-        system=_SYSTEM,
-        messages=[{"role": "user", "content": str(payload)}],
-        schema=Analysis,
-        reasoning_effort="high",
-        timeout_s=ANALYST_TIMEOUT_S,
-    )
+    run_agent = agent_run or _agents_sdk_run
+    try:
+        result: Analysis = await run_agent(_SYSTEM, str(payload))
+    except Exception:
+        # automatic fallback: strict json_schema chat completions (tests use fakes)
+        result = await llm.json(
+            model=settings.mistral_model_main,
+            system=_SYSTEM,
+            messages=[{"role": "user", "content": str(payload)}],
+            schema=Analysis,
+            reasoning_effort="high",
+            timeout_s=ANALYST_TIMEOUT_S,
+        )
     # grouping truth comes from the embeddings: enforce count + example ids
     by_runs: dict[str, list[int]] = {}
     for idxs in clusters:

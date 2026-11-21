@@ -46,7 +46,7 @@ def _fake_fetcher(jwk: dict):
 
 
 def _token(private, kid=KID, **claims) -> str:
-    payload = {"sub": "user_123", "sid": "sess_1", "azp": "app_1",
+    payload = {"sub": "user_123", "sid": "sess_1", "azp": "http://localhost:3000",
                "iat": int(time.time()), "exp": int(time.time()) + 600}
     payload.update(claims)
     return jwt.encode(payload, private, algorithm="RS256", headers={"kid": kid})
@@ -81,6 +81,18 @@ async def test_wrong_signature_rejected():
     auth = ClerkAuth(PK, fetcher=_fake_fetcher(JWK))
     with pytest.raises(HTTPException) as exc:
         await auth.verify(_token(OTHER_PRIVATE))  # signed by another key
+    assert exc.value.status_code == 401
+
+
+async def test_wrong_azp_rejected():
+    """v4.1 review: the `azp` claim must be in CLERK_AUTHORIZED_PARTIES."""
+    auth = ClerkAuth(PK, fetcher=_fake_fetcher(JWK))
+    with pytest.raises(HTTPException) as exc:
+        await auth.verify(_token(PRIVATE, azp="https://evil.example"))
+    assert exc.value.status_code == 401
+    # and a missing azp is rejected too (Clerk session tokens always carry it)
+    with pytest.raises(HTTPException) as exc:
+        await auth.verify(_token(PRIVATE, azp=None))
     assert exc.value.status_code == 401
 
 

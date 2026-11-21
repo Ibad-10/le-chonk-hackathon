@@ -8,9 +8,12 @@ signing keys come from Clerk's JWKS endpoint,
 base64-decoded from the publishable key (`pk_test_<base64(host)$>`).
 
 Verification: signature against the JWKS key matching `kid`, `exp` required and
-checked (PyJWT). On success the Clerk user id is upserted into `players` and the
-Player is returned. Read routes stay public; owner-only routes compare
-`agents.owner_id` with the player id via `require_agent_owner`.
+checked (PyJWT), and the `azp` (authorized party) claim must be in
+`CLERK_AUTHORIZED_PARTIES` (comma-separated, default `http://localhost:3000`).\r
+On success the Clerk user id is upserted into `players` and the Player is\r
+returned. Read routes stay public; owner-only routes compare `agents.owner_id`\r
+with the player id via `require_agent_owner` (house agents are owned by\r
+ADMIN_PLAYER_IDS).
 """
 
 from __future__ import annotations
@@ -49,10 +52,14 @@ class ClerkAuth:
         self,
         publishable_key: str | None = None,
         fetcher: Callable[[], Awaitable[dict[str, Any]]] | None = None,
+        authorized_parties: list[str] | None = None,
     ) -> None:
         self.publishable_key = publishable_key or settings.next_public_clerk_publishable_key
         self._host = frontend_api_host(self.publishable_key) if self.publishable_key else ""
         self._fetcher = fetcher or self._fetch_jwks
+        self._authorized_parties = (
+            authorized_parties if authorized_parties is not None else settings.clerk_authorized_parties
+        )
         self._jwks: dict[str, Any] | None = None
 
     @property
@@ -82,14 +89,18 @@ class ClerkAuth:
             raise HTTPException(status_code=401, detail="unknown signing key")
         key = jwt.algorithms.RSAAlgorithm.from_jwk(jwk)
         try:
-            return jwt.decode(
+            claims = jwt.decode(
                 token,
                 key,
                 algorithms=["RS256"],
-                options={"require": ["exp", "sub"]},  # exp checked by default
+                options={"require": ["exp", "sub", "azp"]},  # exp checked by default
             )
         except jwt.PyJWTError as exc:
             raise HTTPException(status_code=401, detail=f"invalid session token: {exc}")
+        # v4.1 review: the authorized party must be one we allow
+        if claims.get("azp") not in self._authorized_parties:
+            raise HTTPException(status_code=401, detail="azp not in CLERK_AUTHORIZED_PARTIES")
+        return claims
 
 
 def get_clerk_auth(request: Request) -> ClerkAuth:

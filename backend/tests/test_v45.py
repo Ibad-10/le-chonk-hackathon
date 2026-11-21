@@ -280,8 +280,11 @@ async def test_analyst_groups_by_embedding_similarity_and_explains():
         # r1/r2 identical vectors (same scam), r3 orthogonal
         return [[1.0, 0.0] if "hospital" in t else [0.0, 1.0] for t in texts]
 
+    async def no_sdk(system, payload):
+        raise RuntimeError("tests stay on fakes: no real Agents SDK call")
+
     llm = FakeAnalystLLM(_analysis_stub())
-    result = await analyze(llm, embed_fn, entries, runs)
+    result = await analyze(llm, embed_fn, entries, runs, agent_run=no_sdk)
     assert len(result.groups) == 1  # merged by embedding similarity
     assert result.groups[0].count == 2
     assert set(result.groups[0].example_run_ids) == {"r1", "r2"}
@@ -295,6 +298,76 @@ async def test_analyst_groups_by_embedding_similarity_and_explains():
     langs = {l.language: l for l in result.languages}
     assert langs["es"].failure_rate == pytest.approx(1.0)
     assert langs["en"].failure_rate == pytest.approx(2 / 2)
+
+
+async def test_analyst_runs_on_mistral_agents_sdk():
+    """Bonus track: the analyst is a Mistral Agents SDK agent (fake runner here);
+    the chat-completions call is only the fallback."""
+    entries = [_entry("r1")]
+    runs = {"r1": _run("r1")}
+
+    async def embed_fn(texts):
+        return [[1.0, 0.0] for _ in texts]
+
+    calls: list[dict] = []
+
+    async def fake_agent_run(system, payload):
+        calls.append({"system": system, "payload": payload})
+        return _analysis_stub()
+
+    llm = FakeAnalystLLM(_analysis_stub())
+    result = await analyze(llm, embed_fn, entries, runs, agent_run=fake_agent_run)
+    assert len(calls) == 1  # SDK path used, no chat-completions fallback
+    assert llm.calls == []
+    assert "analyst" in calls[0]["system"].lower()
+    assert "r1" in calls[0]["payload"]
+    assert result.groups[0].count == 1
+
+
+async def test_analyst_falls_back_to_chat_completions_when_sdk_fails():
+    entries = [_entry("r1")]
+    runs = {"r1": _run("r1")}
+
+    async def embed_fn(texts):
+        return [[1.0, 0.0] for _ in texts]
+
+    async def failing_agent_run(system, payload):
+        raise RuntimeError("agents sdk down")
+
+    llm = FakeAnalystLLM(_analysis_stub())
+    result = await analyze(llm, embed_fn, entries, runs, agent_run=failing_agent_run)
+    assert len(llm.calls) == 1  # fallback chat completions used
+    assert result.groups[0].count == 1
+
+
+def test_default_analyst_runner_builds_a_mistral_agent(monkeypatch):
+    """The default runner constructs agents.Agent with the main model and the
+    Analysis structured output type (SDK faked here)."""
+    import mistralai.agents as mistral_agents
+
+    from app import analyst as analyst_mod
+
+    built: list[dict] = []
+
+    class FakeResult:
+        output = None
+        text = _analysis_stub().model_dump_json()
+
+    class FakeAgent:
+        def __init__(self, **kw):
+            built.append(kw)
+
+        async def run(self, content, timeout=None):
+            return FakeResult()
+
+    monkeypatch.setattr(mistral_agents, "Agent", FakeAgent)
+    import asyncio
+
+    result = asyncio.run(analyst_mod._agents_sdk_run("system", "payload"))
+    assert built[0]["model"] == settings.mistral_model_main
+    assert built[0]["output_type"] is Analysis
+    assert built[0]["instructions"] == "system"
+    assert isinstance(result, Analysis)
 
 
 def test_analyst_schema_has_no_fix_or_suggestion_field():

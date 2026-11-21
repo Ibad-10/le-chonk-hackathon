@@ -43,6 +43,10 @@ class Settings:
     # Clerk (v4.1): session tokens verified on write routes; players.id = Clerk user id
     next_public_clerk_publishable_key: str = _get("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY")
     clerk_secret_key: str = _get("CLERK_SECRET_KEY")
+    # comma-separated allowed `azp` (authorized party) claim values
+    clerk_authorized_parties: list[str] = [
+        p for p in _get("CLERK_AUTHORIZED_PARTIES", "http://localhost:3000").split(",") if p
+    ]
 
     # Run limits (v4)
     run_voice_s: float = float(_get("RUN_VOICE_S", "300"))
