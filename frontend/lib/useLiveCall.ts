@@ -339,6 +339,13 @@ export function useLiveCall(
 
   // --- push-to-talk fallback (existing HTTP endpoint) ---------------------------
 
+  // The voice HTTP routes verify the Clerk session token like every write
+  // route; send it as a Bearer header whenever the caller can mint one.
+  const authHeaders = useCallback(async (): Promise<Record<string, string>> => {
+    const token = (await getToken?.()) ?? null;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }, [getToken]);
+
   const sendClip = useCallback(async (blob: Blob) => {
     const sessionId = sessionRef.current;
     if (!sessionId) return;
@@ -347,6 +354,7 @@ export function useLiveCall(
       form.append("file", blob, "clip.webm");
       const res = await fetch(`${BACKEND_URL}/voice/sessions/${sessionId}/turn`, {
         method: "POST",
+        headers: await authHeaders(),
         body: form,
       });
       if (!res.ok) throw new Error(`turn failed (${res.status})`);
@@ -368,7 +376,7 @@ export function useLiveCall(
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [applyState, pushCaption]);
+  }, [applyState, pushCaption, authHeaders]);
 
   const startRecording = useCallback(async () => {
     try {
@@ -404,8 +412,8 @@ export function useLiveCall(
     try {
       const res = await fetch(`${BACKEND_URL}/voice/sessions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agent_id: agentId, player_id: "anon", mode: "arena" }),
+        headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+        body: JSON.stringify({ agent_id: agentId, mode: "arena" }),
       });
       if (!res.ok) throw new Error(`start failed (${res.status})`);
       const data = await res.json();
@@ -428,7 +436,7 @@ export function useLiveCall(
       setError(e instanceof Error ? e.message : String(e));
       setStatus("idle");
     }
-  }, [agentId, startLive, startMic]);
+  }, [agentId, startLive, startMic, authHeaders]);
 
   const end = useCallback(async () => {
     stopPlayback();
@@ -444,7 +452,10 @@ export function useLiveCall(
     wsRef.current = null;
     if (sessionId) {
       try {
-        await fetch(`${BACKEND_URL}/voice/sessions/${sessionId}/end`, { method: "POST" });
+        await fetch(`${BACKEND_URL}/voice/sessions/${sessionId}/end`, {
+          method: "POST",
+          headers: await authHeaders(),
+        });
       } catch {
         /* hang-up is best-effort */
       }
@@ -457,7 +468,7 @@ export function useLiveCall(
     workletRef.current = null;
     applyState("end");
     setSecondsLeft(0);
-  }, [applyState, stopPlayback]);
+  }, [applyState, stopPlayback, authHeaders]);
 
   const toggleMute = useCallback(() => {
     const next = applyState("space");

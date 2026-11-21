@@ -39,7 +39,6 @@ from typing import Any, AsyncIterator, Awaitable, Callable, Protocol
 import httpx
 import websockets
 
-from app.auth import current_player
 from app.config import settings
 from app.runs import RunService
 from app.voice import MISTRAL_API_BASE, voice_id_for
@@ -56,6 +55,9 @@ MONITOR_TICK_S = 0.05
 
 STTConnectFn = Callable[[str, str], Awaitable[Any]]
 TTSStreamFn = Callable[[str, str], AsyncIterator[bytes]]
+# async token -> verified Clerk user id; raises on an invalid token. Injected
+# by the WS route (app.auth.ClerkAuth.verify) — never a base64-decoded `sub`.
+AuthVerifierFn = Callable[[str], Awaitable[str]]
 
 
 class WebSocketLike(Protocol):
@@ -180,11 +182,13 @@ class LiveCall:
         tts_stream: TTSStreamFn | None = None,
         api_key: str | None = None,
         now_fn: Callable[[], float] = time.time,
+        auth_verifier: AuthVerifierFn | None = None,
     ) -> None:
         self.ws = ws
         self.run_id = run_id
         self.runs = runs
         self.player = player
+        self._auth_verifier = auth_verifier
         self._api_key = api_key if api_key is not None else settings.mistral_api_key
         self._stt_connect = stt_connect or default_stt_connect
         if tts_stream is not None:
@@ -320,10 +324,20 @@ class LiveCall:
                 return
             kind = msg.get("type")
             if kind == "auth":
-                player = current_player(msg.get("token"))
-                if player != "anon" and self._run is not None and self._run.player_id == "anon":
-                    self._run.player_id = player
-                    self.runs.repo.update(self._run)
+                # defense in depth: re-verify through the route's ClerkAuth
+                # verifier (JWKS signature + exp + azp/sid), never decode `sub`
+                if self._auth_verifier is not None:
+                    try:
+                        player = await self._auth_verifier(str(msg.get("token") or ""))
+                    except Exception:
+                        await self._send({"type": "error", "detail": "invalid session token"})
+                        await self.ws.close(4401)
+                        self._done = True
+                        self._done_event.set()
+                        return
+                    if player and self._run is not None and self._run.player_id == "anon":
+                        self._run.player_id = player
+                        self.runs.repo.update(self._run)
             elif kind == "audio":
                 data = msg.get("data") or msg.get("audio")
                 if data and not self._muted:

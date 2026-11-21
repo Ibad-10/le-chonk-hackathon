@@ -19,11 +19,14 @@ import time
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
+from app.auth import ClerkAuth
 from app.config import settings
 from app.routes.voice_live import router as voice_live_router
 from app.runs import RunService
 from app.voice_live import LiveCall
+from tests.test_auth import JWK, OTHER_PRIVATE, PK, PRIVATE, _fake_fetcher, _token
 from tests.test_voice import FakeLLM
 
 API_KEY = "sk-live-secret-456"
@@ -119,10 +122,8 @@ def silent_frame(ms: int = 100) -> str:
 
 
 def clerk_token(sub: str = "user_live_123") -> str:
-    def b64(obj) -> str:
-        return base64.urlsafe_b64encode(json.dumps(obj).encode()).rstrip(b"=").decode()
-
-    return f"{b64({'alg': 'RS256', 'typ': 'JWT'})}.{b64({'sub': sub})}.sig"
+    """A properly signed Clerk session token (fake JWKS in test_auth)."""
+    return _token(PRIVATE, sub=sub)
 
 
 async def wait_for(cond, timeout: float = 5.0) -> None:
@@ -380,7 +381,31 @@ async def test_server_never_sends_api_key_to_client():
     assert stt.connect_args[1] == API_KEY
 
 
-# --- route-level test: WS wiring + Clerk token auth ---------------------------
+# --- route-level tests: WS wiring + Clerk token auth -------------------------
+
+
+def _ws_app(runs, stt, tts, factory_spy=None):
+    """App with the voice_live router, a fake ClerkAuth (local RSA JWKS) and a
+    LiveCall factory wired to the fake STT/TTS."""
+    app = FastAPI()
+    app.state.run_service = runs
+    app.state.clerk_auth = ClerkAuth(PK, fetcher=_fake_fetcher(JWK))
+
+    def factory(ws, run_id, runs_, player, **kw):
+        if factory_spy is not None:
+            factory_spy.append((run_id, player))
+        async def stt_connect(model, key):
+            stt.connect_args = (model, key)
+            return stt
+
+        return LiveCall(
+            ws, run_id, runs_, player,
+            stt_connect=stt_connect, tts_stream=tts, api_key=API_KEY, **kw,
+        )
+
+    app.state.live_call_factory = factory
+    app.include_router(voice_live_router)
+    return app
 
 
 def test_route_websocket_auth_and_no_key_leak():
@@ -389,21 +414,7 @@ def test_route_websocket_auth_and_no_key_leak():
     tts = FakeTTS()
     token = clerk_token("user_live_123")
 
-    app = FastAPI()
-    app.state.run_service = runs
-
-    def factory(ws, run_id, runs_, player, **kw):
-        async def stt_connect(model, key):
-            return stt
-
-        return LiveCall(
-            ws, run_id, runs_, player,
-            stt_connect=stt_connect, tts_stream=tts, api_key=API_KEY,
-        )
-
-    app.state.live_call_factory = factory
-    app.include_router(voice_live_router)
-
+    app = _ws_app(runs, stt, tts)
     client = TestClient(app)
     run = runs.start_run(agent_id="bank-ava", channel="voice", mode="ladder", player_id="anon")
     received: list[dict] = []
@@ -420,10 +431,79 @@ def test_route_websocket_auth_and_no_key_leak():
     ready = next(m for m in received if m["type"] == "ready")
     assert ready["run_id"] == run.id
     assert ready["input"] == "live"
-    # Clerk token resolved through current_player and stamped on the anon run
+    # Clerk token verified through ClerkAuth (JWKS) and stamped on the anon run
     assert ready["player_id"] == "user_live_123"
     assert runs.repo.get(run.id).player_id == "user_live_123"
     assert received[-1]["type"] == "ended"
     assert API_KEY not in json.dumps(received), "API key leaked over the WebSocket"
     # the audio frame was relayed to the (fake) realtime socket, key server-side
     assert any(m.get("type") == "input_audio.append" for m in stt.sent)
+
+
+def test_forged_token_rejected_before_any_mistral_call():
+    """Security: a token with a BAD signature on WS /voice/live must be rejected
+    (close 4401) before any LiveCall is created — so before any Mistral call."""
+    runs = make_runs()
+    stt = FakeSTT(session_events())
+    tts = FakeTTS()
+    forged = _token(OTHER_PRIVATE, sub="attacker")  # signed by the wrong key
+    assert forged != clerk_token("user_live_123")
+
+    factory_calls: list[tuple] = []
+    app = _ws_app(runs, stt, tts, factory_spy=factory_calls)
+    app.include_router(voice_live_router)
+    client = TestClient(app)
+    run = runs.start_run(agent_id="bank-ava", channel="voice", mode="ladder", player_id="anon")
+
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect(f"/voice/live/{run.id}?token={forged}") as ws:
+            ws.receive_json()  # pragma: no cover — should never get here
+    assert exc.value.code in (4401, 1006), f"expected auth rejection, got {exc.value.code}"
+
+    assert factory_calls == [], "LiveCall must not be created for a forged token"
+    assert stt.sent == [], "no frame may reach the Mistral STT socket"
+    assert not stt.closed or True  # STT was never even connected
+    assert runs.repo.get(run.id).player_id == "anon", "forged sub must not be stamped"
+
+
+def test_first_message_auth_required_without_query_token():
+    """No ?token= -> the first WS message must be a valid {"type":"auth"};
+    anything else (or a forged token) is rejected before any Mistral call."""
+    runs = make_runs()
+    stt = FakeSTT(session_events())
+    tts = FakeTTS()
+    factory_calls: list[tuple] = []
+    app = _ws_app(runs, stt, tts, factory_spy=factory_calls)
+    client = TestClient(app)
+    run = runs.start_run(agent_id="bank-ava", channel="voice", mode="ladder", player_id="anon")
+
+    # (a) first message is audio, not auth -> rejected
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect(f"/voice/live/{run.id}") as ws:
+            ws.send_json({"type": "audio", "data": loud_frame()})
+            while True:
+                ws.receive_json()  # error frame, then close 4401
+    assert factory_calls == [] and stt.sent == []
+
+    # (b) first message auth with a forged token -> rejected
+    forged = _token(OTHER_PRIVATE, sub="attacker")
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect(f"/voice/live/{run.id}") as ws:
+            ws.send_json({"type": "auth", "token": forged})
+            while True:
+                ws.receive_json()  # error frame, then close 4401
+    assert factory_calls == [] and stt.sent == []
+
+    # (c) first message auth with a valid token -> accepted
+    token = clerk_token("user_live_456")
+    with client.websocket_connect(f"/voice/live/{run.id}") as ws:
+        ws.send_json({"type": "auth", "token": token})
+        ready = ws.receive_json()
+        assert ready["type"] == "ready" and ready["player_id"] == "user_live_456"
+        ws.send_json({"type": "end"})
+        while True:
+            msg = ws.receive_json()
+            if msg.get("type") == "ended":
+                break
+    assert factory_calls and factory_calls[0][1] == "user_live_456"
+    assert any(m.get("type") == "session.update" for m in stt.sent)

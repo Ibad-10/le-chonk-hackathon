@@ -50,7 +50,11 @@ export function talkKeyAction(event: {
   return "none";
 }
 
-export function useVoiceCall(agentId: string, agentName = "Ava") {
+export function useVoiceCall(
+  agentId: string,
+  agentName = "Ava",
+  getToken?: () => string | null | Promise<string | null>,
+) {
   const [status, setStatus] = useState<VoiceStatus>("idle");
   const [captions, setCaptions] = useState<Caption[]>([]);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
@@ -67,14 +71,21 @@ export function useVoiceCall(agentId: string, agentName = "Ava") {
     setStatus(s);
   };
 
+  // The voice HTTP routes verify the Clerk session token like every write
+  // route; send it as a Bearer header whenever the caller can mint one.
+  const authHeaders = useCallback(async (): Promise<Record<string, string>> => {
+    const token = (await getToken?.()) ?? null;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }, [getToken]);
+
   const start = useCallback(async () => {
     setError(null);
     setStatusBoth("connecting");
     try {
       const res = await fetch(`${BACKEND_URL}/voice/sessions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agent_id: agentId, player_id: "anon", mode: "arena" }),
+        headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+        body: JSON.stringify({ agent_id: agentId, mode: "arena" }),
       });
       if (!res.ok) throw new Error(`start failed (${res.status})`);
       const data = await res.json();
@@ -85,7 +96,7 @@ export function useVoiceCall(agentId: string, agentName = "Ava") {
       setError(e instanceof Error ? e.message : String(e));
       setStatusBoth("idle");
     }
-  }, [agentId]);
+  }, [agentId, authHeaders]);
 
   const sendClip = useCallback(async (blob: Blob) => {
     const sessionId = sessionRef.current;
@@ -97,6 +108,7 @@ export function useVoiceCall(agentId: string, agentName = "Ava") {
       const t0 = performance.now();
       const res = await fetch(`${BACKEND_URL}/voice/sessions/${sessionId}/turn`, {
         method: "POST",
+        headers: await authHeaders(),
         body: form,
       });
       if (!res.ok) throw new Error(`turn failed (${res.status})`);
@@ -128,7 +140,7 @@ export function useVoiceCall(agentId: string, agentName = "Ava") {
       setError(e instanceof Error ? e.message : String(e));
       setStatusBoth("ready");
     }
-  }, []);
+  }, [authHeaders]);
 
   const startRecording = useCallback(async () => {
     if (statusRef.current !== "ready") return;
@@ -178,13 +190,16 @@ export function useVoiceCall(agentId: string, agentName = "Ava") {
     audioRef.current?.pause();
     if (sessionId) {
       try {
-        await fetch(`${BACKEND_URL}/voice/sessions/${sessionId}/end`, { method: "POST" });
+        await fetch(`${BACKEND_URL}/voice/sessions/${sessionId}/end`, {
+          method: "POST",
+          headers: await authHeaders(),
+        });
       } catch {
         /* hang-up is best-effort */
       }
     }
     setStatusBoth("ended");
-  }, [stopRecording]);
+  }, [stopRecording, authHeaders]);
 
   // Space key listeners + countdown timer
   useEffect(() => {

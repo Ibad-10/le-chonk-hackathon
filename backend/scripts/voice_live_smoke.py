@@ -40,6 +40,25 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # backend/ on sys.
 from app.config import settings  # noqa: E402
 from app.voice import MISTRAL_API_BASE  # noqa: E402
 
+
+def session_token(cli_arg: str | None) -> str:
+    """Clerk session token for the smoke run: --token, else RED_ROOM_TOKEN, else
+    minted exactly like scripts/e2e_smoke.py (Clerk Backend API + session
+    token endpoint, CLERK_SECRET_KEY from ../.env). Never printed."""
+    if cli_arg:
+        return cli_arg
+    import os
+
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+    if os.environ.get("RED_ROOM_TOKEN"):
+        return os.environ["RED_ROOM_TOKEN"]
+    from scripts.e2e_smoke import clerk_session_token
+
+    return clerk_session_token()
+
+
 PROMPT = "Hi, I need help with my account, what's my balance?"
 FRAME_S = 0.1  # 100 ms frames, like the browser worklet
 SILENCE_AFTER_SPEECH_S = 3.0  # keep streaming silence so turn detection fires
@@ -102,8 +121,11 @@ async def main() -> None:
     parser.add_argument("--backend", default="http://localhost:8000")
     parser.add_argument("--agent", default="bank-ava")
     parser.add_argument("--mode", default="arena", choices=["arena", "ladder"])
+    parser.add_argument("--token", default=None, help="Clerk session JWT (else minted like e2e_smoke)")
     args = parser.parse_args()
     backend = args.backend.rstrip("/")
+    token = session_token(args.token)
+    auth = {"Authorization": f"Bearer {token}"}
 
     async with httpx.AsyncClient(base_url=MISTRAL_API_BASE, timeout=60.0) as mistral:
         voice_id = await pick_voice(mistral)
@@ -116,20 +138,22 @@ async def main() -> None:
     async with httpx.AsyncClient(base_url=backend, timeout=30.0) as http:
         r = await http.post(
             "/voice/sessions",
-            json={"agent_id": args.agent, "player_id": "smoke", "mode": args.mode},
+            json={"agent_id": args.agent, "mode": args.mode},
+            headers=auth,
         )
         if r.status_code == 409:  # no lives left in arena: retry as practice
             print("[smoke] arena 409 (no lives) — retrying mode=ladder")
             r = await http.post(
                 "/voice/sessions",
-                json={"agent_id": args.agent, "player_id": "smoke", "mode": "ladder"},
+                json={"agent_id": args.agent, "mode": "ladder"},
+                headers=auth,
             )
         r.raise_for_status()
         session = r.json()
         run_id = session["session_id"]
         print(f"[smoke] session {run_id} agent={session['agent_id']} mode={session['mode']}")
 
-        ws_url = f"{backend.replace('http', 'ws')}/voice/live/{run_id}"
+        ws_url = f"{backend.replace('http', 'ws')}/voice/live/{run_id}?token={token}"
         t0 = time.perf_counter()
         captions: list[dict] = []
         agent_reply = ""

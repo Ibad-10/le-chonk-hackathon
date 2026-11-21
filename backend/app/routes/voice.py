@@ -7,15 +7,21 @@ POST /voice/sessions/{id}/turn            upload one audio clip -> transcript,
 GET  /voice/sessions/{id}                 status: timer, language, transcript
 POST /voice/sessions/{id}/end             hang up
 
-No route returns the Mistral API key or any credential; audio is uploaded to
-this backend, which is the only process that talks to the Mistral API.
+All routes require the same verified Clerk session token as the other write
+routes (`Depends(current_player)`: JWKS signature + exp + azp/sid); the caller-
+supplied `player_id` body field is ignored — the player id always comes from
+the verified token's `sub`. No route returns the Mistral API key or any
+credential; audio is uploaded to this backend, which is the only process that
+talks to the Mistral API.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
+from app.auth import current_player
+from app.db import Player
 from app.runs import NoLivesAvailable, RunNotFound, RunService
 from app.voice import VoiceService
 
@@ -25,7 +31,7 @@ router = APIRouter()
 class StartVoiceSession(BaseModel):
     agent_id: str
     mission_id: str | None = None
-    player_id: str = "anon"
+    player_id: str = "anon"  # deprecated: ignored, the verified `sub` is used
     mode: str = "arena"
 
 
@@ -35,12 +41,14 @@ def get_voice_service(request: Request) -> VoiceService:
 
 
 @router.post("/voice/sessions")
-async def start_voice_session(req: StartVoiceSession, request: Request):
+async def start_voice_session(
+    req: StartVoiceSession, request: Request, player: Player = Depends(current_player)
+):
     service = get_voice_service(request)
     try:
         return await service.create_session(
             agent_id=req.agent_id,
-            player_id=req.player_id,
+            player_id=player.id,
             mode=req.mode,
             mission_id=req.mission_id,
         )
@@ -55,6 +63,7 @@ async def voice_turn(
     session_id: str,
     request: Request,
     file: UploadFile = File(...),
+    player: Player = Depends(current_player),
 ):
     service = get_voice_service(request)
     audio = await file.read()
@@ -72,7 +81,9 @@ async def voice_turn(
 
 
 @router.get("/voice/sessions/{session_id}")
-async def voice_session_status(session_id: str, request: Request):
+async def voice_session_status(
+    session_id: str, request: Request, player: Player = Depends(current_player)
+):
     service = get_voice_service(request)
     try:
         return service.status(session_id)
@@ -81,7 +92,9 @@ async def voice_session_status(session_id: str, request: Request):
 
 
 @router.post("/voice/sessions/{session_id}/end")
-async def end_voice_session(session_id: str, request: Request):
+async def end_voice_session(
+    session_id: str, request: Request, player: Player = Depends(current_player)
+):
     service = get_voice_service(request)
     try:
         return service.end_session(session_id)

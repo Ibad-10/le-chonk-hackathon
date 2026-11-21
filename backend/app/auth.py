@@ -23,7 +23,7 @@ from typing import Any, Awaitable, Callable
 
 import httpx
 import jwt
-from fastapi import Header, HTTPException, Request
+from fastapi import Header, HTTPException, Request, WebSocket
 from sqlmodel import Session
 
 from app.config import settings
@@ -117,7 +117,10 @@ class ClerkAuth:
         return claims
 
 
-def get_clerk_auth(request: Request) -> ClerkAuth:
+def get_clerk_auth(request: Request | WebSocket) -> ClerkAuth:
+    """The shared ClerkAuth verifier for a request OR a WebSocket (both expose
+    `.app.state`); voice WS routes verify the `?token=` query param / first
+    `auth` message through this same verifier before relaying anything."""
     auth = getattr(request.app.state, "clerk_auth", None)
     if auth is None:
         auth = ClerkAuth()

@@ -25,8 +25,17 @@ const STATUS_LABEL: Record<string, string> = {
   ended: "Call ended",
 };
 
-export default function CallPanel({ agentId = "bank-ava" }: { agentId?: string }) {
-  const call = useLiveCall(agentId, "Ava");
+export default function CallPanel({
+  agentId = "bank-ava",
+  agentName = "Ava",
+  getToken,
+}: {
+  agentId?: string;
+  agentName?: string;
+  /** Clerk session-token minter; the WS + HTTP voice routes verify it. */
+  getToken?: () => string | null | Promise<string | null>;
+}) {
+  const call = useLiveCall(agentId, agentName, getToken);
   const { status, captions, secondsLeft, error, mode } = call;
   const live = mode === "live";
   const inCall = status !== "idle" && status !== "ended";
