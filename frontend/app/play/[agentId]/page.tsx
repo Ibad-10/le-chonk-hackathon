@@ -22,7 +22,7 @@ import {
   type BaseEvent,
 } from "@/lib/base";
 import { MAX_PLAYER_MESSAGES, TEXT_RUN_SECONDS, secondsUntil } from "@/lib/format";
-import { isReadTool, isRiskyTool, type SiegeEvent } from "@/lib/siege";
+import type { SiegeEvent } from "@/lib/siege";
 import type { Agent, RoleBrief, RunResult } from "@/lib/types";
 
 // three.js needs the DOM — no SSR.
@@ -92,6 +92,9 @@ function PlayPageInner({ agentId }: { agentId: string }) {
   const [baseEvents, setBaseEvents] = useState<BaseEvent[]>([]);
   const [siegeEvents, setSiegeEvents] = useState<SiegeEvent[]>([]);
   const [secondsLeft, setSecondsLeft] = useState(TEXT_RUN_SECONDS);
+  const [runEndsAt, setRunEndsAt] = useState<number | null>(null); // ms epoch
+  const [connLost, setConnLost] = useState(false);
+  const lastTextRef = useRef("");
   const cooldownSentRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const limit = useMessageLimit(MAX_PLAYER_MESSAGES);
@@ -119,9 +122,12 @@ function PlayPageInner({ agentId }: { agentId: string }) {
 
   // HUD clock (the TimerRing keeps its own ring; this feeds the siege HUD)
   useEffect(() => {
-    const id = setInterval(() => setSecondsLeft((s) => Math.max(0, s - 1)), 1000);
+    if (runEndsAt === null) return;
+    const tick = () => setSecondsLeft(Math.max(0, Math.round((runEndsAt - Date.now()) / 1000)));
+    tick();
+    const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [runEndsAt]);
 
   // agent in cooldown -> the fortress shows scaffolding in the siege
   useEffect(() => {
@@ -148,9 +154,11 @@ function PlayPageInner({ agentId }: { agentId: string }) {
         });
         if (cancelled) return;
         setRunId(run.run_id);
+        // clock starts now: ends_at from POST /runs, else start + limit
+        setRunEndsAt(run.ends_at ? run.ends_at * 1000 : Date.now() + TEXT_RUN_SECONDS * 1000);
         // the dealt role comes back with the run; the GET route is only a mock fallback
         if (run.brief) setBrief(run.brief);
-        else getRoleBrief(run.run_id).then((b) => !cancelled && setBrief(b));
+        else getRoleBrief(run.run_id).then((b) => !cancelled && setBrief(b)).catch(() => {});
       } catch (e) {
         if (!cancelled)
           setError(e instanceof Error ? e.message : "could not start run");
@@ -178,24 +186,15 @@ function PlayPageInner({ agentId }: { agentId: string }) {
     }
   }, [getToken, isSignedIn, result, brief]);
 
-  const send = useCallback(async () => {
-    const text = draft.trim();
+  /** Stream the agent's reply for `text` (already shown in the transcript). */
+  const deliver = useCallback(async (text: string) => {
     const id = runIdRef.current;
-    if (!text || !id || sending || result) return;
-    if (!limit.trySend()) return; // 21st message is blocked by the counter
-    setDraft("");
+    if (!id) return;
+    setConnLost(false);
     setSending(true);
-    setMessages((m) => [...m, { role: "player", content: text }]);
-    // live base: a troop squad spawns immediately and marches at its target
-    setBaseEvents((e) => [
-      ...e,
-      { type: "playerMessage", text, tactic: causeFamilyOf(text) },
-    ]);
-    // tactic comes from the run's tactic/persona field when the backend
-    // provides it; until then the siege falls back to a keyword heuristic
-    setSiegeEvents((e) => [...e, { type: "playerMessage", text, tactic: null }]);
     setStreaming("");
     streamedRef.current = "";
+    try {
     const token = isSignedIn ? await getToken() : null;
     await streamMessage(
       id,
@@ -220,13 +219,11 @@ function PlayPageInner({ agentId }: { agentId: string }) {
               .filter((b): b is BaseEvent => b !== null),
           ]);
           const okTools = event.tool_events.filter((t) => t.ok);
-          const toolEvents: SiegeEvent[] = okTools.map((t): SiegeEvent | null =>
-            isRiskyTool(t.call.name, t.call.args)
-              ? { type: "riskyToolExecuted", tool: t.call.name }
-              : isReadTool(t.call.name)
-                ? { type: "readToolRan", tool: t.call.name }
-                : null
-          ).filter((x): x is SiegeEvent => x !== null);
+          // same classification as the base map + breach counter (single source)
+          const toolEvents = event.tool_events
+            .map(toolEventToBaseEvent)
+            .filter((b): b is Extract<BaseEvent, { type: "readToolRan" | "riskyToolExecuted" }> =>
+              b !== null && (b.type === "readToolRan" || b.type === "riskyToolExecuted"));
           setSiegeEvents((e) => [
             ...e,
             {
@@ -246,11 +243,41 @@ function PlayPageInner({ agentId }: { agentId: string }) {
           setSending(false);
           if (event.ended) void finish();
         },
-        onError: () => setSending(false),
+        onError: () => {
+          setConnLost(true);
+          setSending(false);
+        },
       },
       token
     );
-  }, [draft, sending, result, limit, isSignedIn, getToken, finish]);
+    } catch {
+      // keep the transcript; offer Retry. Never fall back to mock mid-run.
+      setStreaming("");
+      setConnLost(true);
+      setSending(false);
+    }
+  }, [isSignedIn, getToken, finish]);
+
+  const send = useCallback(async () => {
+    const text = draft.trim();
+    if (!text || !runIdRef.current || sending || result) return;
+    if (!limit.trySend()) return; // 21st message is blocked by the counter
+    setDraft("");
+    lastTextRef.current = text;
+    setMessages((m) => [...m, { role: "player", content: text }]);
+    // live base: a troop squad spawns immediately and marches at its target
+    setBaseEvents((e) => [
+      ...e,
+      { type: "playerMessage", text, tactic: causeFamilyOf(text) },
+    ]);
+    setSiegeEvents((e) => [...e, { type: "playerMessage", text, tactic: null }]);
+    await deliver(text);
+  }, [draft, sending, result, limit, deliver]);
+
+  /** Resend the last message (already in the transcript and counted). */
+  const retry = useCallback(async () => {
+    if (lastTextRef.current && !sending && !result) await deliver(lastTextRef.current);
+  }, [deliver, sending, result]);
 
   if (isLoaded && !isSignedIn) {
     return (
@@ -262,45 +289,29 @@ function PlayPageInner({ agentId }: { agentId: string }) {
   const missionTitle = brief?.role === "genuine" ? "Your brief" : "Your mission";
 
   return (
-    <div className="relative h-[calc(100dvh-4rem)] w-full overflow-hidden bg-room-bg">
-      {/* the stage: 3D village, or the 2D Siege when WebGL / motion is unavailable */}
-      <div className="absolute inset-x-0 bottom-[44%] top-0 lg:bottom-0 lg:right-[410px]">
-        {view === "base" ? (
-          <LiveBase
-            agentId={agentId}
-            stream={agent?.stream ?? "banking"}
-            events={baseEvents}
-            height="100%"
-          />
-        ) : (
-          <div className="h-full overflow-auto px-3 pb-4 pt-28">
-            <Siege
-              events={siegeEvents}
-              messagesRemaining={limit.remaining}
-              maxMessages={limit.max}
-              secondsLeft={secondsLeft}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* HUD */}
-      <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-wrap items-start justify-between gap-2 p-2 sm:p-4">
-        <div className="pointer-events-auto flex items-center gap-3 rounded-xl border border-room-line bg-room-panel/90 px-3 py-2 shadow-lg backdrop-blur sm:gap-4 sm:px-4">
+    <div className="relative flex h-[calc(100dvh-4rem)] w-full flex-col overflow-hidden bg-room-bg">
+      {/* HUD bar: in flow above the scene, so the breach counter never covers the canvas */}
+      <header className="z-20 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-room-line bg-room-panel/95 p-2 sm:px-4">
+        <div className="flex items-center gap-3 sm:gap-4">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wider text-room-muted">
               {practice ? "Practice raid" : "Raiding"}
             </p>
-            <h1 className="font-display text-2xl leading-none text-room-text sm:text-3xl">
+            <h1 className="font-display text-xl leading-none text-room-text sm:text-3xl">
               {agent?.name ?? agentId}
             </h1>
-            <p className="mt-1 font-mono text-xs text-room-muted">
+            <p className="mt-1 hidden font-mono text-xs text-room-muted sm:block">
               {agent?.stream ?? "…"} · v{agent?.current_version ?? "?"} · {agent ? Math.round(agent.rating) : "—"} Elo
             </p>
           </div>
-          <TimerRing seconds={TEXT_RUN_SECONDS} onExpire={() => void finish()} />
+          <TimerRing
+            seconds={TEXT_RUN_SECONDS}
+            endsAt={runEndsAt ?? undefined}
+            paused={runEndsAt === null}
+            onExpire={() => void finish()}
+          />
         </div>
-        <div className="pointer-events-auto flex items-center gap-4 rounded-xl border border-room-line bg-room-panel/90 px-3 py-2 shadow-lg backdrop-blur sm:gap-5 sm:px-4">
+        <div className="flex items-center gap-3 sm:gap-5">
           <BreachMeter events={baseEvents} />
           <div className="hidden sm:block">
             <MessagePips used={limit.count} max={limit.max} />
@@ -315,11 +326,32 @@ function PlayPageInner({ agentId }: { agentId: string }) {
           </button>
         </div>
       </header>
+      <div className="relative min-h-0 flex-1">
+      {/* the stage: 3D village, or the 2D Siege when WebGL / motion is unavailable */}
+      <div className="absolute inset-x-0 bottom-[44%] top-0 lg:bottom-0 lg:right-[410px]">
+        {view === "base" ? (
+          <LiveBase
+            agentId={agentId}
+            stream={agent?.stream ?? "banking"}
+            events={baseEvents}
+            height="100%"
+          />
+        ) : (
+          <div className="h-full overflow-auto px-3 pb-4 pt-3">
+            <Siege
+              events={siegeEvents}
+              messagesRemaining={limit.remaining}
+              maxMessages={limit.max}
+              secondsLeft={secondsLeft}
+            />
+          </div>
+        )}
+      </div>
 
       {/* comms: chat or voice call; right column on desktop, bottom sheet on phones */}
       <section
         aria-label="Comms"
-        className="absolute inset-x-2 bottom-2 z-20 flex max-h-[46%] flex-col overflow-hidden rounded-xl border border-room-line bg-room-panel/95 shadow-2xl backdrop-blur lg:inset-x-auto lg:bottom-4 lg:right-4 lg:top-32 lg:max-h-none lg:w-[390px]"
+        className="absolute inset-x-2 bottom-2 z-20 flex max-h-[46%] flex-col overflow-hidden rounded-xl border border-room-line bg-room-panel/95 shadow-2xl backdrop-blur lg:inset-x-auto lg:bottom-4 lg:right-4 lg:top-4 lg:max-h-none lg:w-[390px]"
       >
         {brief && (
           <details open={messages.length === 0} className="group border-b border-room-line">
@@ -372,6 +404,19 @@ function PlayPageInner({ agentId }: { agentId: string }) {
         ) : (
           <>
             <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto p-4">
+              {connLost && (
+                <div role="alert" className="flex items-center justify-between gap-2 rounded-lg bg-danger-bg px-3 py-2 text-sm text-danger-soft">
+                  <span>Connection to the agent lost.</span>
+                  <button
+                    type="button"
+                    onClick={() => void retry()}
+                    disabled={sending}
+                    className="rounded-md border border-danger/60 px-2.5 py-1 font-semibold hover:bg-danger/20 disabled:opacity-50"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
               {messages.length === 0 && !streaming && (
                 <p className="text-sm text-room-muted">
                   Every message sends a troop at the base. Talk {agent?.name ?? "the agent"} into it.
@@ -445,6 +490,7 @@ function PlayPageInner({ agentId }: { agentId: string }) {
           {error}
         </p>
       )}
+      </div>
     </div>
   );
 }
