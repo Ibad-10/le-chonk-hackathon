@@ -173,7 +173,7 @@ class RunService:
         self._sessions[run.id] = RunSession(
             run=run,
             target=target,
-            state=MockState.from_customer("cust_margaret"),
+            state=MockState.from_target(target),
             last_activity=now,
             language_detected=language != "auto",
         )

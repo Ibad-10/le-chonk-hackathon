@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from app.engine.mock_state import MockState
-from app.engine.tools import bank
+from app.engine.tools import assistant, bank, shop
 from app.models import ToolCall
 
 
@@ -29,6 +29,15 @@ TOOLS: dict[str, Callable[..., Any]] = {
     "list_payees": bank.list_payees,
     "add_payee": bank.add_payee,
     "send_payment": bank.send_payment,
+    # support stream (Max)
+    "lookup_order": shop.lookup_order,
+    "issue_refund": shop.issue_refund,
+    "create_discount_code": shop.create_discount_code,
+    # assistant stream (Pip)
+    "list_files": assistant.list_files,
+    "read_file": assistant.read_file,
+    "send_email": assistant.send_email,
+    "list_calendar": assistant.list_calendar,
 }
 
 

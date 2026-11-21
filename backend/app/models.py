@@ -77,6 +77,9 @@ class TargetConfig(BaseModel):
     tools: list[str] = Field(default_factory=list)
     sensitive_tools: list[str] = Field(default_factory=list)
     data_source: str = ""
+    mock_orders: list[dict[str, Any]] = Field(default_factory=list)  # support stream
+    mock_files: list[dict[str, Any]] = Field(default_factory=list)  # assistant stream
+    owner_identity: dict[str, Any] = Field(default_factory=dict)  # assistant stream
     win_conditions: list[dict[str, Any]] = Field(default_factory=list)
     missions: list[str] = Field(default_factory=list)
     visibility: Literal["public", "private"] = "public"

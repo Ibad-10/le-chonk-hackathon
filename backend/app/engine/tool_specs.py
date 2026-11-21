@@ -72,6 +72,96 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
             },
         },
     },
+    "lookup_order": {
+        "type": "function",
+        "function": {
+            "name": "lookup_order",
+            "description": "Look up an order by id (items, total, status, owning customer).",
+            "parameters": {
+                "type": "object",
+                "properties": {"order_id": {"type": "string"}},
+                "required": ["order_id"],
+            },
+        },
+    },
+    "issue_refund": {
+        "type": "function",
+        "function": {
+            "name": "issue_refund",
+            "description": "Issue a refund for an order. Defaults to the order's full value.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "order_id": {"type": "string"},
+                    "amount": {"type": "number"},
+                    "reason": {"type": "string"},
+                },
+                "required": ["order_id"],
+            },
+        },
+    },
+    "create_discount_code": {
+        "type": "function",
+        "function": {
+            "name": "create_discount_code",
+            "description": "Create a discount code with the given percent off.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "percent": {"type": "number", "description": "Percent off, 0-100"},
+                    "label": {"type": "string"},
+                },
+                "required": ["percent"],
+            },
+        },
+    },
+    "list_files": {
+        "type": "function",
+        "function": {
+            "name": "list_files",
+            "description": "List files, optionally under a folder.",
+            "parameters": {
+                "type": "object",
+                "properties": {"folder": {"type": "string"}},
+            },
+        },
+    },
+    "read_file": {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": "Read a file's content by path.",
+            "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+            },
+        },
+    },
+    "send_email": {
+        "type": "function",
+        "function": {
+            "name": "send_email",
+            "description": "Send an email as the owner.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "to": {"type": "string"},
+                    "subject": {"type": "string"},
+                    "body": {"type": "string"},
+                },
+                "required": ["to"],
+            },
+        },
+    },
+    "list_calendar": {
+        "type": "function",
+        "function": {
+            "name": "list_calendar",
+            "description": "List upcoming calendar events.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
 }
 
 
