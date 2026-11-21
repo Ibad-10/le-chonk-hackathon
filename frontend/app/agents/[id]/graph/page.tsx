@@ -76,10 +76,9 @@ function GraphPageInner({ params }: { params: Promise<{ id: string }> }) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
-      <h1 className="font-display text-3xl text-room-text">
-        Knowledge graph <span className="text-room-muted">· owner only</span>
-      </h1>
+    <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
+      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-room-red-soft">Defend · owner only</p>
+      <h1 className="mt-1 font-display text-4xl text-room-text">Knowledge graph</h1>
       <p className="mt-2 text-sm text-room-muted">
         Versions, attacks, root-cause groups and what the agent learned. Each node
         type has its own shape, icon and text label — never colour alone.
@@ -102,7 +101,7 @@ function GraphPageInner({ params }: { params: Promise<{ id: string }> }) {
         )}
       </ul>
 
-      <div className="mt-4 overflow-hidden rounded-xl border border-room-line bg-room-panel">
+      <div className="mt-4 overflow-hidden rounded-2xl border border-room-line bg-room-panel">
         {data && (
           <ForceGraph2D
             graphData={data}

@@ -2,6 +2,7 @@
 
 import { Suspense, use, useEffect, useState } from "react";
 import Link from "next/link";
+import { Landmark, Swords } from "lucide-react";
 
 import { getAgent } from "@/lib/api";
 import type { Agent } from "@/lib/types";
@@ -37,7 +38,7 @@ function AgentPublicPageInner({
   if (error) {
     return (
       <div className="mx-auto w-full max-w-3xl px-4 py-10">
-        <p role="alert" className="text-room-red-soft">
+        <p role="alert" className="text-danger-soft">
           {error}
         </p>
       </div>
@@ -52,13 +53,20 @@ function AgentPublicPageInner({
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
-      <p className="text-sm uppercase tracking-wide text-room-muted">
-        {agent.stream} stream {agent.is_house ? "· house agent" : ""}
-      </p>
-      <h1 className="mt-1 font-display text-4xl text-room-text">{agent.name}</h1>
+    <div className="mx-auto w-full max-w-4xl px-4 py-10 sm:px-6">
+      <div className="flex items-start gap-4">
+        <span className="grid size-14 shrink-0 place-items-center rounded-xl bg-primary-bg text-room-red">
+          <Landmark size={28} aria-hidden="true" />
+        </span>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-room-red-soft">
+            {agent.stream} stream {agent.is_house ? "· house agent" : ""}
+          </p>
+          <h1 className="mt-1 font-display text-4xl leading-none text-room-text">{agent.name}</h1>
+        </div>
+      </div>
 
-      <dl className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3">
+      <dl className="mt-8 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-room-line bg-room-line sm:grid-cols-3">
         {(
           [
             ["Rating", `${Math.round(agent.rating)} ±${Math.round(agent.rating_deviation)}`],
@@ -74,26 +82,26 @@ function AgentPublicPageInner({
         ).map(([term, value]) => (
           <div
             key={term}
-            className="rounded-xl border border-room-line bg-room-panel p-4"
+            className="bg-room-panel px-5 py-3"
           >
-            <dt className="text-xs uppercase tracking-wide text-room-muted">{term}</dt>
-            <dd className="mt-1 font-mono text-lg font-semibold text-room-text">
+            <dt className="text-[11px] uppercase tracking-wider text-room-muted">{term}</dt>
+            <dd className="mt-1 font-mono text-xl font-bold tabular-nums text-room-text">
               {value}
             </dd>
           </div>
         ))}
       </dl>
 
-      <div className="mt-8 flex gap-3">
+      <div className="mt-8 flex flex-wrap gap-3">
         <Link
           href={`/play/${agent.id}`}
-          className="rounded-md bg-room-red px-4 py-2 text-sm font-semibold text-room-bg hover:bg-room-red-soft"
+          className="inline-flex items-center gap-2 rounded-xl bg-room-red px-5 py-3 font-bold text-room-bg transition-transform hover:-translate-y-0.5 hover:bg-room-red-soft"
         >
-          Chat with {agent.name}
+          <Swords size={18} aria-hidden="true" /> Raid {agent.name}
         </Link>
         <Link
           href="/"
-          className="rounded-md border border-room-line bg-room-panel-2 px-4 py-2 text-sm font-semibold text-room-text"
+          className="inline-flex items-center rounded-xl border border-room-line bg-room-panel-2 px-5 py-3 font-semibold text-room-text hover:border-room-red/70"
         >
           Arena
         </Link>

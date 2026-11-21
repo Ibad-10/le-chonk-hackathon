@@ -96,7 +96,7 @@ export default function ArenaPage() {
               <Swords size={22} aria-hidden="true" /> Find a target
             </button>
             <Link
-              href="/my-agents"
+              href="/create"
               className="inline-flex items-center gap-2.5 rounded-xl border border-room-line bg-room-panel/80 px-6 py-4 text-lg font-semibold text-room-text backdrop-blur hover:border-room-red/70"
             >
               <Hammer size={20} aria-hidden="true" /> Build your own

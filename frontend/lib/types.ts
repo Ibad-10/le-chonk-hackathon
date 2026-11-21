@@ -291,3 +291,24 @@ export interface NowPlayingCard {
   captions: string[]; // last public captions, no private data
   started_at: string;
 }
+
+// --- create-agent wizard (POST /agents, placement test) ------------------------
+
+export type Visibility = "private" | "public";
+
+export interface CreateAgentBody {
+  name: string;
+  stream: Stream;
+  instructions: string;
+  knowledge: string;
+  visibility: Visibility;
+}
+
+export interface PlacementJob {
+  job_id: string;
+  agent_id: string;
+  status: "queued" | "running" | "done" | "error";
+  progress: { done: number; total: number };
+  grade: Grade | null;
+  rating: number | null;
+}

@@ -39,12 +39,14 @@ import type {
   AgentLeaderboardEntry,
   AgentSummary,
   ArenaEvent,
+  CreateAgentBody,
   Draft,
   DraftRecord,
   KnowledgeGraph,
   Logbook,
   MessageResponse,
   NowPlayingCard,
+  PlacementJob,
   PlayerLeaderboardEntry,
   RetestJob,
   RetestReport,
@@ -493,5 +495,67 @@ export async function getGraph(
     `/agents/${agentId}/graph`,
     { method: "GET", token },
     () => ({ ...MOCK_GRAPH, agent_id: agentId })
+  );
+}
+
+// --- create-agent wizard ----------------------------------------------------------
+
+/** POST /agents — 409 = limit of 3 agents, 422 = invalid body (both throw ApiError). */
+export async function createAgent(body: CreateAgentBody, token?: Token): Promise<Agent> {
+  return request<Agent>(
+    "/agents",
+    { method: "POST", body: JSON.stringify(body), token, write: true },
+    () => ({
+      id: `mock-${body.name.toLowerCase().replace(/\W+/g, "-")}`,
+      name: body.name,
+      stream: body.stream,
+      rating: 1000,
+      rating_deviation: 350,
+      grade: null,
+      helpfulness: null,
+      current_version: "1.0",
+      cooldown_until: null,
+      is_house: false,
+      owner_id: "mock",
+      stats: { runs: 0, breaks: 0, holds: 0 },
+    })
+  );
+}
+
+/** POST /agents/{id}/placement -> {job_id} */
+export async function startPlacement(agentId: string, token?: Token): Promise<{ job_id: string }> {
+  return request<{ job_id: string }>(
+    `/agents/${agentId}/placement`,
+    { method: "POST", body: "{}", token, write: true },
+    () => ({ job_id: `mock-placement-${Date.now()}` })
+  );
+}
+
+const mockPlacementStart = new Map<string, number>();
+
+/** GET /agents/{id}/placement/{job} — progress, then grade + starting rating. */
+export async function getPlacementJob(
+  agentId: string,
+  jobId: string,
+  token?: Token
+): Promise<PlacementJob> {
+  return request<PlacementJob>(
+    `/agents/${agentId}/placement/${jobId}`,
+    { method: "GET", token },
+    () => {
+      // MOCK fallback: fake a ~4 s placement test so the wizard is demoable offline.
+      const t0 = mockPlacementStart.get(jobId) ?? Date.now();
+      mockPlacementStart.set(jobId, t0);
+      const done = Math.min(10, Math.floor((Date.now() - t0) / 400));
+      const finished = done >= 10;
+      return {
+        job_id: jobId,
+        agent_id: agentId,
+        status: finished ? "done" : "running",
+        progress: { done, total: 10 },
+        grade: finished ? "C" : null,
+        rating: finished ? 1100 : null,
+      };
+    }
   );
 }

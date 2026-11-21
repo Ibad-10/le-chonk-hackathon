@@ -73,7 +73,7 @@ function outcomeLabel(result: RunResult): string {
 function PlayPageInner({ agentId }: { agentId: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const practice = searchParams.get("practice") === "1";
+  const practice = searchParams.get("practice") === "1" || searchParams.get("mode") === "practice";
   const { isLoaded, isSignedIn, getToken } = useAuth();
 
   const [agent, setAgent] = useState<Agent | null>(null);
