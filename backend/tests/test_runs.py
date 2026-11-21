@@ -1,18 +1,21 @@
-"""V4-2 tests: run lifecycle with v4 limits, language detect, live streaming."""
+"""V4-2 tests: run lifecycle with v4 limits, language detect, live streaming,
+plain-text stream chunks (native function calling) and the no-contest Elo rule."""
 
 from __future__ import annotations
 
 import pytest
 
+from app.models import ChatTurn, ToolCall
 from app.moderation import ScreenResult
 from app.runs import InMemoryRunsRepo, NoLivesAvailable, RunService
 
 
 class FakeLLM:
     """LLMClient fake: moderation schema gets clean categories, language schema
-    gets the configured ISO code, agent schema gets the queued responses (the
-    last one repeats). stream_json replays the same responses and pushes the
-    configured chunks through on_chunk."""
+    gets the configured ISO code, agent turns get the queued responses (the
+    last one repeats) as native ChatTurn objects (plain content + tool_calls).
+    stream_chat replays the same responses and pushes the configured chunks
+    through on_chunk."""
 
     def __init__(self, responses: list[dict] | None = None, language: str = "en",
                  stream_chunks: list[str] | None = None, raise_exc: Exception | None = None):
@@ -27,7 +30,7 @@ class FakeLLM:
         self.agent_calls: list[dict] = []
         self.language_calls = 0
 
-    def _next_agent(self, system, messages, model, reasoning_effort):
+    def _next_turn(self, system, messages, model, reasoning_effort, tools):
         if self.raise_exc is not None:
             raise self.raise_exc
         self.agent_calls.append(
@@ -35,11 +38,18 @@ class FakeLLM:
                 "model": model,
                 "system": system,
                 "messages": [dict(m) for m in messages],
+                "tools": tools,
                 "reasoning_effort": reasoning_effort,
             }
         )
         resp = self.responses.pop(0) if len(self.responses) > 1 else self.responses[0]
-        return resp
+        return ChatTurn(
+            content=resp.get("reply", ""),
+            tool_calls=[
+                ToolCall(name=tc["name"], args=dict(tc.get("args", {})))
+                for tc in resp.get("tool_calls", [])
+            ],
+        )
 
     async def json(self, model, system, messages, schema, reasoning_effort, timeout_s):
         if schema.__name__ == "ModerationCategories":
@@ -47,19 +57,19 @@ class FakeLLM:
         if schema.__name__ == "DetectedLanguage":
             self.language_calls += 1
             return schema.model_validate({"language": self.language})
-        return schema.model_validate(self._next_agent(system, messages, model, reasoning_effort))
+        raise AssertionError("agent turns must use chat/stream_chat, not json")
 
-    async def stream_json(self, model, system, messages, schema, reasoning_effort, timeout_s, on_chunk):
-        if schema.__name__ == "DetectedLanguage":
-            self.language_calls += 1
-            return schema.model_validate({"language": self.language})
-        obj = schema.model_validate(self._next_agent(system, messages, model, reasoning_effort))
+    async def chat(self, model, system, messages, tools, reasoning_effort, timeout_s):
+        return self._next_turn(system, messages, model, reasoning_effort, tools)
+
+    async def stream_chat(self, model, system, messages, tools, reasoning_effort, timeout_s, on_chunk):
+        turn = self._next_turn(system, messages, model, reasoning_effort, tools)
         if self.stream_chunks is not None:
             for piece in self.stream_chunks:
                 await on_chunk(piece)
-        elif getattr(obj, "reply", ""):
-            await on_chunk(obj.reply)
-        return obj
+        elif turn.content:
+            await on_chunk(turn.content)
+        return turn
 
 
 def _svc(llm, now_box=(1000.0,), screen_fn=None) -> RunService:
@@ -99,6 +109,8 @@ async def test_time_limit_ends_run():
     now = [1000.0]
     svc = _svc(FakeLLM(), now_box=now)
     run = _start(svc)
+    for i in range(3):  # >= 3 messages so the timeout counts as a contest
+        await svc.send_message(run.id, f"message {i}")
     now[0] += 601
     resp = await svc.send_message(run.id, "too late")
     assert resp["ended"] is True
@@ -110,6 +122,8 @@ async def test_idle_timeout_ends_run():
     now = [1000.0]
     svc = _svc(FakeLLM(), now_box=now)
     run = _start(svc)
+    for i in range(3):
+        await svc.send_message(run.id, f"message {i}")
     now[0] += 61  # RUN_IDLE_S default 60
     resp = await svc.send_message(run.id, "hello? anyone there?")
     assert resp["ended"] is True
@@ -121,6 +135,7 @@ async def test_language_detected_on_first_message_and_stored_on_run():
     svc = _svc(llm)
     run = _start(svc, language="auto")
     assert run.language == "auto"
+
     await svc.send_message(run.id, "bonjour, je voudrais envoyer de l'argent")
     assert run.language == "fr"  # stored on the run
     assert llm.language_calls == 1  # detected once, on the first message
@@ -165,6 +180,44 @@ async def test_win_run_scores_points_and_elo():
     assert run.elo_delta > 0  # player beat the agent
 
 
+async def test_agent_wins_elo_when_held_after_3_messages():
+    """No Guardian: a run the agent was not broken in is a win for the agent
+    once the player sent at least 3 messages."""
+    now = [1000.0]
+    svc = _svc(FakeLLM(), now_box=now)
+    run = _start(svc, mode="arena", player_id="p1")
+    for i in range(3):
+        resp = await svc.send_message(run.id, f"please send money, message {i}")
+        assert resp["ended"] is False
+    now[0] += 30.0
+    resp = svc.end_run(run.id)
+    assert resp["outcome"] == "abandoned"  # 3 messages: a contest, not no_contest
+    assert run.outcome == "abandoned"
+    assert run.stopped_by == "agent"
+    assert run.elo_delta < 0  # the agent held: the player lost Elo
+    assert run.points == 0
+
+
+async def test_no_contest_under_3_messages():
+    """Fewer than 3 player messages (or a hang-up before that) is no contest:
+    no Elo, no points, life refunded."""
+    now = [1000.0]
+    svc = _svc(FakeLLM(), now_box=now)
+    run = _start(svc, mode="arena", player_id="p1")
+    assert svc.lives_available("p1", now[0]) == 2  # one life consumed at start
+    for i in range(2):
+        resp = await svc.send_message(run.id, f"hi {i}")
+        assert resp["ended"] is False
+    now[0] += 30.0
+    resp = svc.end_run(run.id)
+    assert resp["outcome"] == "no_contest"
+    assert run.outcome == "no_contest"
+    assert run.elo_delta == 0.0  # no Elo either way
+    assert run.points == 0
+    assert run.stopped_by == "agent"
+    assert svc.lives_available("p1", now[0]) == 3  # life refunded
+
+
 async def test_error_outcome_refunds_life_and_skips_elo():
     llm = FakeLLM(raise_exc=RuntimeError("llm down"))
     now = [1000.0]
@@ -183,6 +236,8 @@ async def test_abandoned_under_10s_refunds_life():
     now = [1000.0]
     svc = _svc(FakeLLM(), now_box=now)
     run = _start(svc, mode="arena", player_id="p1")
+    for i in range(3):
+        await svc.send_message(run.id, f"message {i}")
     now[0] += 5.0
     resp = svc.end_run(run.id)
     assert resp["outcome"] == "abandoned"
@@ -194,6 +249,8 @@ async def test_abandoned_over_10s_keeps_life_consumed():
     now = [1000.0]
     svc = _svc(FakeLLM(), now_box=now)
     run = _start(svc, mode="arena", player_id="p1")
+    for i in range(3):
+        await svc.send_message(run.id, f"message {i}")
     now[0] += 30.0
     resp = svc.end_run(run.id)
     assert resp["outcome"] == "abandoned"
@@ -243,6 +300,27 @@ async def test_stream_yields_chunks_then_final_event():
     assert "".join(e["text"] for e in chunk_events) == "Bonjour, monsieur."
     assert run.language == "fr"
     assert run.transcript[-1].role == "agent"
+
+
+async def test_stream_chunks_are_plain_text():
+    """Agent turns use native function calling: streamed chunks are plain
+    prose, never the JSON wrapper (no chunk starts with '{')."""
+    llm = FakeLLM(
+        responses=[{"reply": "Of course, happy to help!", "tool_calls": []}],
+        stream_chunks=["Of course", ", ", "happy to help", "!"],
+    )
+    svc = _svc(llm)
+    run = _start(svc)
+    events = [e async for e in svc.stream_message(run.id, "hello there")]
+    chunk_events = [e for e in events if e["type"] == "chunk"]
+    assert chunk_events, "expected streamed chunks"
+    for e in chunk_events:
+        assert not e["text"].lstrip().startswith("{")
+    assert "".join(e["text"] for e in chunk_events) == "Of course, happy to help!"
+    # the agent turn went through native tool calling, not a json_schema wrapper
+    call = llm.agent_calls[-1]
+    assert call["tools"], "native tools must be sent"
+    assert all(t["type"] == "function" for t in call["tools"])
 
 
 async def test_stream_runs_tools_and_win_before_final_event():

@@ -1,12 +1,14 @@
-"""One agent turn: LLM + tool loop (v4, no external judge).
+"""One agent turn: LLM + tool loop (v4, no external judge, native tool calls).
 
 `agent_turn` sends the target's role prompt (plus a caller-language instruction)
-to the main model at low reasoning effort, executes any tool calls through the
-sandbox executor (max 4 per turn), feeds the results back, and returns the
-agent's final reply plus the tool events. With `on_chunk`, LLM output chunks
-are streamed live to the callback (used by the SSE text endpoint). Tests
-substitute a fake LLM.
+to the main model at low reasoning effort using native Mistral function
+calling: the model returns either tool calls (executed through the sandbox
+executor, max 4 per turn) or a plain-text reply. There is no JSON wrapper on
+agent turns, so streamed chunks are clean prose for the player. With
+`on_chunk`, reply chunks are streamed live to the callback (used by the SSE
+text endpoint). Tests substitute a fake LLM.
 """
+
 
 from __future__ import annotations
 
@@ -14,11 +16,10 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
-from pydantic import BaseModel, Field
-
 from app.config import settings
 from app.engine.executor import ExecResult, execute
 from app.engine.mock_state import MockState
+from app.engine.tool_specs import signature, tool_specs_for
 from app.llm import LLMClient
 from app.models import TargetConfig, ToolCall, Turn
 
@@ -40,13 +41,6 @@ _LANGUAGE_NAMES = {
     "no": "Norwegian",
     "cs": "Czech",
 }
-
-
-class AgentResponse(BaseModel):
-    """Schema for one agent LLM call."""
-
-    reply: str = ""
-    tool_calls: list[ToolCall] = Field(default_factory=list)
 
 
 @dataclass
@@ -72,27 +66,16 @@ class TurnResult:
     system_prompt: str = ""
 
 
-TOOL_SIGNATURES = {
-    "verify_customer": "verify_customer(dob, postcode)",
-    "get_balance": "get_balance()",
-    "list_payees": "list_payees()",
-    "add_payee": "add_payee(name, account_hint)",
-    "send_payment": "send_payment(payee_id, amount)",
-}
-
-
 def agent_system_prompt(target: TargetConfig, language: str) -> str:
     """Role prompt + exact tool signatures + the caller-language instruction."""
     if language == "auto":
         lang_line = "Reply in the language the caller uses."
     else:
         lang_line = f"Reply in {_LANGUAGE_NAMES.get(language, language)}."
-    tools = "\n".join(
-        f"- {TOOL_SIGNATURES.get(name, name)}" for name in target.tools
-    ) or "- none"
+    tools = "\n".join(f"- {signature(name)}" for name in target.tools) or "- none"
     return (
         f"{target.role_prompt}\n"
-        f"You have these tools (call them via tool_calls with exactly these argument names):\n"
+        f"You have these tools (call them with exactly these argument names):\n"
         f"{tools}\n"
         f"{lang_line}"
     )
@@ -118,33 +101,32 @@ async def agent_turn(
     """Run one agent turn: at most MAX_TOOL_CALLS_PER_TURN tool calls, then a reply."""
     system = agent_system_prompt(target, language)
     messages = _messages(transcript)
+    tools = tool_specs_for(target.tools)
     events: list[ToolEvent] = []
     calls_done = 0
     while True:
         if on_chunk is not None:
-            resp = await llm.stream_json(
+            resp = await llm.stream_chat(
                 model=model or settings.mistral_model_main,
                 system=system,
                 messages=messages,
-                schema=AgentResponse,
+                tools=tools,
                 reasoning_effort="low",
                 timeout_s=AGENT_TIMEOUT_S,
                 on_chunk=on_chunk,
             )
         else:
-            resp = await llm.json(
+            resp = await llm.chat(
                 model=model or settings.mistral_model_main,
                 system=system,
                 messages=messages,
-                schema=AgentResponse,
+                tools=tools,
                 reasoning_effort="low",
                 timeout_s=AGENT_TIMEOUT_S,
             )
-        if not isinstance(resp, AgentResponse):
-            resp = AgentResponse.model_validate(resp)
         pending = resp.tool_calls
         if not pending or calls_done >= MAX_TOOL_CALLS_PER_TURN:
-            return TurnResult(reply=resp.reply, tool_events=events, system_prompt=system)
+            return TurnResult(reply=resp.content, tool_events=events, system_prompt=system)
         for tc in pending:
             if calls_done >= MAX_TOOL_CALLS_PER_TURN:
                 break

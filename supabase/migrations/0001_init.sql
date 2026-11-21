@@ -63,7 +63,7 @@ create table if not exists public.runs (
   language text not null default 'auto',
   transcript jsonb not null default '[]'::jsonb,
   tool_calls jsonb not null default '[]'::jsonb,
-  outcome text check (outcome in ('win','block','step_up','timeout','abandoned','error')),
+  outcome text check (outcome in ('win','block','step_up','timeout','abandoned','error','no_contest')),
   how_close int not null default 0,
   points int not null default 0,
   elo_delta real not null default 0,

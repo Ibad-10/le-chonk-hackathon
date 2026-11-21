@@ -13,7 +13,7 @@ reasoning, ISO 639-1 code) and stored on the run; the agent replies in it.
 and finishes with a done event carrying tool_events, ended and outcome.
 
 Run state lives in memory plus a `RunsRepo` interface (in-memory implementation
-here; SQLite/Supabase comes later). The HTTP routes in app/routes/runs.py are
+here; SQLite comes in V4-3). The HTTP routes in app/routes/runs.py are
 thin wrappers over `RunService`.
 """
 
@@ -40,6 +40,7 @@ from app.moderation import ScreenResult, screen as moderation_screen
 from app.scoring import elo_update, how_close, points
 
 ABANDONED_REFUND_S = 10.0
+MIN_MESSAGES_FOR_CONTEST = 3  # fewer player messages (or a hang-up) = no contest
 START_ELO = 1200.0
 START_RD = 200.0  # widened uncertainty right after (re)publishing a version
 LANGUAGE_TIMEOUT_S = 10.0
@@ -338,12 +339,21 @@ class RunService:
         now = self._now()
         if run.outcome is not None:
             return
+        # v4 no-contest rule: a run the agent held is a win for
+        # the agent only once the player actually played (>= 3 messages); fewer
+        # messages, or a hang-up before that, is "no contest" (no Elo, no
+        # points, life refunded). A break is always a win for the player.
+        if (
+            outcome in ("timeout", "abandoned")
+            and session.player_messages < MIN_MESSAGES_FOR_CONTEST
+        ):
+            outcome = "no_contest"
         run.outcome = outcome  # type: ignore[assignment]
         run.ended_at = self._now_dt()
         run.how_close = how_close(0, outcome)
         run.stopped_by = "none" if outcome == "win" else "agent"
 
-        # points + Elo (arena only; error, timeout and abandoned skip Elo)
+        # points + Elo (arena only; error and no_contest skip Elo)
         if outcome == "win":
             mission = _mission(run.mission_id)
             key = (run.player_id, run.agent_id, run.mission_id or "")
@@ -365,12 +375,21 @@ class RunService:
                 self._player_elo[run.player_id] = new_p
                 self._agent_elo[run.agent_id] = (new_a, new_rd)
                 run.elo_delta = new_p - player_elo
+        elif outcome in ("timeout", "abandoned") and run.mode == "arena":
+            # the agent was not broken after >= 3 player messages: a win for
+            # the agent ("block")
+            player_elo = self._player_elo.get(run.player_id, START_ELO)
+            agent_elo, agent_rd = self._agent_elo.get(run.agent_id, (START_ELO, START_RD))
+            new_p, new_a, new_rd = elo_update(player_elo, agent_elo, "block", agent_rd)
+            self._player_elo[run.player_id] = new_p
+            self._agent_elo[run.agent_id] = (new_a, new_rd)
+            run.elo_delta = new_p - player_elo
 
         # lives refunds (arena only)
         if run.mode == "arena":
             lives = self._lives[run.player_id]
             duration = now - run.started_at.timestamp()
-            if outcome == "error":
+            if outcome in ("error", "no_contest"):
                 lives.refund()
             elif outcome == "abandoned" and duration < ABANDONED_REFUND_S:
                 lives.refund()

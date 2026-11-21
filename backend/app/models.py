@@ -21,6 +21,14 @@ class Turn(BaseModel):
     content: str
 
 
+class ChatTurn(BaseModel):
+    """One native-function-calling agent turn: plain-text content plus any
+    tool calls the model asked for (already parsed to name + args dict)."""
+
+    content: str = ""
+    tool_calls: list[ToolCall] = Field(default_factory=list)
+
+
 # --- Language detection ------------------------------------------------------
 
 class DetectedLanguage(BaseModel):
@@ -31,7 +39,7 @@ class DetectedLanguage(BaseModel):
 
 # --- Runs ------------------------------------------------------------------
 
-RunOutcome = Literal["win", "timeout", "abandoned", "error"]
+RunOutcome = Literal["win", "timeout", "abandoned", "error", "no_contest"]
 RunMode = Literal["ladder", "arena", "genuine", "ai_scammer", "exam"]
 RunChannel = Literal["text", "voice"]
 

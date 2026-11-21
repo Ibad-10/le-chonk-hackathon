@@ -4,7 +4,7 @@ You are building Red Room at the Mistral "Le Chonk in London" hackathon (Sat 21 
 
 ## What Red Room is
 
-A game where players scam AI agents that can take actions (move money, leak files, issue refunds) by voice or text. Every loss goes into the agent owner's logbook. A Large 4 analyst groups losses by root cause and suggests fixes; the owner fixes the agent, retests the past failures, and publishes a new version. A knowledge graph shows what each agent learned and when; Elo ratings and a held-out exam measure it.
+A game where players scam AI agents that can take actions (move money, leak files, issue refunds) by voice or text. Every loss goes into the agent owner's logbook. A Large 4 analyst groups losses by root cause and explains them (it does not suggest fixes); the owner fixes the agent by rewriting its instructions, retests the past failures, and publishes a new version. A knowledge graph shows what each agent learned and when; Elo ratings and a held-out exam measure it.
 
 ## Read before coding (in this order)
 
