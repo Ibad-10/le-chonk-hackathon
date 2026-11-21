@@ -321,6 +321,7 @@ class RunService:
         elif run.channel == "text" and session.player_messages >= settings.run_text_messages:
             self._finish(session, "timeout")
 
+        self.repo.update(run)  # persist transcript after every handled message
         return self._response(session, reply=result.reply)
 
     def _response(self, session: RunSession, reply: str | None) -> dict[str, Any]:

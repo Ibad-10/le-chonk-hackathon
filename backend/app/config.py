@@ -31,6 +31,9 @@ class Settings:
     voxtral_voice_max: str = _get("VOXTRAL_VOICE_MAX")
     voxtral_voice_pip: str = _get("VOXTRAL_VOICE_PIP")
 
+    # Database (V4-3): SQLite by default; the backend is the only writer
+    database_url: str = _get("DATABASE_URL", "sqlite:///./redroom.db")
+
     # Supabase
     supabase_url: str = _get("SUPABASE_URL")
     supabase_service_role_key: str = _get("SUPABASE_SERVICE_ROLE_KEY")

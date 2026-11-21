@@ -12,6 +12,7 @@ dependencies = [
     "networkx",
     "httpx",
     "python-dotenv",
+    "sqlmodel",
     "pytest",
     "pytest-asyncio",
 ]
