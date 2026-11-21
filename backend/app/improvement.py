@@ -23,7 +23,7 @@ from sqlalchemy import Engine
 from sqlmodel import Session, select
 
 from app.analyst import Analysis, analyze
-from app.db import Agent, AgentDraft, AgentVersion, GraphEvent, LogbookEntry, RunRow, HOUSE_AGENT_IDS
+from app.db import Agent, AgentDraft, AgentVersion, GraphEvent, LogbookEntry, PublicEvent, RunRow, HOUSE_AGENT_IDS
 from app.llm import LLMClient
 from app.models import Run
 from app.repo import _to_run
@@ -159,6 +159,22 @@ async def analyse_agent(
                     },
                 )
             )
+        # V4-22: backfill the detected tactic family onto the matching
+        # agent_broken public event (matched by the run_id in its payload,
+        # which the /events route never serializes)
+        broken_events = session.exec(
+            select(PublicEvent).where(
+                PublicEvent.agent_id == agent_id, PublicEvent.type == "agent_broken"
+            )
+        ).all()
+        for group in result.groups:
+            if not group.family:
+                continue
+            for entry in all_entries:
+                if entry.run_id in group.example_run_ids:
+                    for ev in broken_events:
+                        if ev.payload.get("run_id") == entry.run_id:
+                            ev.payload = {**ev.payload, "tactic_family": group.family}
         session.commit()
     return result
 
@@ -235,6 +251,14 @@ def publish_draft(
                 agent_id=agent_id,
                 type="version",
                 payload={"version": new_version, "from_draft": draft.id},
+            )
+        )
+        # V4-22: sanitized public event for the arena wall ticker
+        session.add(
+            PublicEvent(
+                type="version_published",
+                agent_id=agent_id,
+                payload={"version": new_version},
             )
         )
         session.commit()

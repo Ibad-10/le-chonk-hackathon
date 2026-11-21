@@ -66,6 +66,9 @@ create table if not exists public.runs (
   transcript jsonb not null default '[]'::jsonb,
   tool_calls jsonb not null default '[]'::jsonb,
   outcome text check (outcome in ('win','block','step_up','timeout','abandoned','error','no_contest')),
+  role text check (role in ('scammer','genuine')),   -- v4.1: dealt role on arena runs
+  loss_kind text check (loss_kind in ('security','helpfulness')), -- v4.1: agent loss type
+  spectate boolean not null default false,            -- v4.1: opted in to live spectators
   how_close int not null default 0,
   points int not null default 0,
   elo_delta real not null default 0,
@@ -111,6 +114,8 @@ create table if not exists public.logbook_entries (
   family text,
   root_cause text,                             -- v4: analyst group this entry belongs to
   siblings jsonb not null default '[]'::jsonb, -- v4: cached sibling variants per failure
+  language text,                               -- v4.1: caller language of the run
+  loss_kind text check (loss_kind in ('security','helpfulness')), -- v4.1
   signals jsonb not null default '[]'::jsonb,
   how_close int not null default 0,
   open boolean not null default true,

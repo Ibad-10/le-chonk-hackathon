@@ -99,6 +99,7 @@ class RunRow(SQLModel, table=True):
     stopped_by: str | None = None
     role: str | None = None  # v4.1: dealt role on arena runs
     loss_kind: str | None = None  # "security" | "helpfulness" on agent losses
+    spectate: bool = False  # v4.1: player opted in to live spectators (arena wall)
     how_close: int = 0
     points: int = 0
     elo_delta: float = 0.0

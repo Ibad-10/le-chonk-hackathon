@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "clipped-overflow-container",
+        "value": "*",
+        "files": [
+          "C:/Users/IBADZU~1/AppData/Local/Temp/claude/0fa2f3b7e932577a/9059d903-4f66-44e2-bcf1-2652001adbaf/scratchpad/rr_design/project/Main.dc.html"
+        ],
+        "createdAt": "2026-11-21T13:56:15.460Z",
+        "reason": "Claude: game battlefield stage intentionally clips sprites to the lane; static mockup, no menus inside"
+      }
+    ]
+  }
+}

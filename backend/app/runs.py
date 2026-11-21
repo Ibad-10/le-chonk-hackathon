@@ -146,6 +146,7 @@ class RunService:
         now_fn: Callable[[], float] = time.time,
         rng: random.Random | None = None,
         logbook: LogbookRepo | None = None,
+        engine: Any = None,
     ) -> None:
         self.llm = llm
         self.repo: RunsRepo = repo or InMemoryRunsRepo()
@@ -153,6 +154,7 @@ class RunService:
         self._now = now_fn
         self._rng = rng or random.Random()
         self.logbook: LogbookRepo | None = logbook
+        self._engine = engine  # v4.1: public_events sink (arena wall)
         self._sessions: dict[str, RunSession] = {}
         self._lives: dict[str, Lives] = {}
         self._player_elo: dict[str, float] = {}
@@ -198,6 +200,44 @@ class RunService:
         """The player-only brief for the dealt role (never sent to the agent)."""
         return self._session(run_id).brief
 
+    def _record_public_event(self, type_: str, agent_id: str, payload: dict[str, Any]) -> None:
+        """V4-22: write a sanitized public event (arena wall ticker). Payload is
+        restricted to tactic family / version / run id — never transcripts."""
+        if self._engine is None:
+            return
+        from sqlmodel import Session
+
+        from app.db import PublicEvent
+
+        with Session(self._engine) as session:
+            session.add(PublicEvent(type=type_, agent_id=agent_id, payload=payload))
+            session.commit()
+
+    def now_playing(self, max_captions: int = 3) -> list[dict[str, Any]]:
+        """V4-22: live runs whose player opted in (`spectate`): agent, channel,
+        elapsed and the last caption lines only — never the full transcript."""
+        now = self._now()
+        cards: list[dict[str, Any]] = []
+        for session in self._sessions.values():
+            run = session.run
+            if run.outcome is not None or not run.spectate:
+                continue
+            captions = [t.content for t in run.transcript[-max_captions:]]
+            cards.append(
+                {
+                    "run_id": run.id,
+                    "agent_id": run.agent_id,
+                    "agent_name": session.target.name,
+                    "stream": session.target.stream,
+                    "channel": run.channel,
+                    "started_at": run.started_at.isoformat(),
+                    "elapsed_s": max(0, int(now - run.started_at.timestamp())),
+                    "captions": captions,
+                }
+            )
+        cards.sort(key=lambda c: c["started_at"])
+        return cards
+
     def start_run(
         self,
         agent_id: str,
@@ -207,6 +247,7 @@ class RunService:
         player_id: str = "anon",
         language: str = "auto",
         role: str | None = None,
+        spectate: bool = False,
     ) -> Run:
         now = self._now()
         target = load_target(agent_id)
@@ -227,6 +268,7 @@ class RunService:
             mission_id=mission_id,
             language=language,
             started_at=started,
+            spectate=spectate,
         )
         state = MockState.from_target(target)
         brief: dict[str, Any] | None = None
@@ -463,6 +505,23 @@ class RunService:
                 )
             if run.mode == "arena":
                 self._cooldown_until[run.agent_id] = now + settings.arena_cooldown_s
+
+        # V4-22: sanitized public events for the arena wall — a break carries the
+        # tactic family only (filled in by the analyst), a hold carries none.
+        # Never transcripts or tool arguments.
+        if run.mode == "arena":
+            if outcome == "win":
+                self._record_public_event(
+                    "agent_broken",
+                    run.agent_id,
+                    {"tactic_family": None, "version": run.agent_version, "run_id": run.id},
+                )
+            elif outcome in ("timeout", "abandoned"):
+                self._record_public_event(
+                    "agent_held",
+                    run.agent_id,
+                    {"tactic_family": None, "version": run.agent_version, "run_id": run.id},
+                )
 
         # points + Elo (arena only; error and no_contest skip Elo)
         if outcome == "win":

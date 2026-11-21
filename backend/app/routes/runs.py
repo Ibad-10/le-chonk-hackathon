@@ -26,6 +26,7 @@ class StartRunRequest(BaseModel):
     mode: RunMode = "arena"
     player_id: str = "anon"
     language: str = "auto"
+    spectate: bool = False  # v4.1: opt in to live spectators (GET /now-playing)
 
 
 class MessageRequest(BaseModel):
@@ -56,6 +57,7 @@ async def start_run(req: StartRunRequest, request: Request, player: Player = Dep
             mode=req.mode,
             player_id=player.id,  # v4.1: the player is the verified Clerk user
             language=req.language,
+            spectate=req.spectate,  # v4.1: arena-wall opt-in
         )
     except NoLivesAvailable as exc:
         raise HTTPException(status_code=409, detail=str(exc))

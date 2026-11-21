@@ -7,9 +7,10 @@ never instructions, knowledge, transcripts, config or the graph.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlmodel import Session, select
 
+from app.auth import current_player
 from app.db import Agent, Player
 from app.improvement import agent_stats, public_agent
 
@@ -29,6 +30,15 @@ async def list_agents(request: Request):
     """Arena list: public agents with safe fields only."""
     with Session(_engine(request)) as session:
         agents = session.exec(select(Agent).where(Agent.visibility == "public")).all()
+        return [public_agent(a, _engine(request), _run_service(request)) for a in agents]
+
+
+@router.get("/agents/mine")
+async def my_agents(request: Request, player: Player = Depends(current_player)):
+    """The signed-in owner's own agents (agents.owner_id == Clerk user id).
+    Declared before /agents/{agent_id} so "mine" is not swallowed by it."""
+    with Session(_engine(request)) as session:
+        agents = session.exec(select(Agent).where(Agent.owner_id == player.id)).all()
         return [public_agent(a, _engine(request), _run_service(request)) for a in agents]
 
 

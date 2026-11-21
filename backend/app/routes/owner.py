@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
 from app.auth import current_player, is_agent_owner
-from app.db import Agent, Player
+from app.db import Agent, AgentDraft, AgentVersion, Player, RetestResult
 from app.improvement import (
     MAX_INSTRUCTIONS_CHARS,
     RetestService,
@@ -131,6 +131,64 @@ async def post_publish(
 async def get_graph(agent_id: str, request: Request, player: Player = Depends(current_player)):
     _owner_agent(request, agent_id, player)
     return build_graph(_engine(request), agent_id)
+
+
+@router.get("/agents/{agent_id}/versions")
+async def list_versions(
+    agent_id: str, request: Request, player: Player = Depends(current_player)
+):
+    """Owner-only version list: published versions plus still-open drafts, each
+    with status, created_at and a retest summary (cases / blocked / labels)."""
+    _owner_agent(request, agent_id, player)
+    engine = _engine(request)
+    with Session(engine) as session:
+        versions = session.exec(
+            select(AgentVersion).where(AgentVersion.agent_id == agent_id)
+        ).all()
+        drafts = session.exec(
+            select(AgentDraft).where(
+                AgentDraft.agent_id == agent_id, AgentDraft.status == "draft"
+            )
+        ).all()
+        retests = session.exec(select(RetestResult)).all()
+
+    def _retest_summary(version: int) -> dict:
+        rows = [r for r in retests if r.draft_version == version]
+        return {
+            "cases": len(rows),
+            "blocked": sum(r.blocked_count for r in rows),
+            "fixed": sum(1 for r in rows if r.label == "fixed"),
+            "flaky": sum(1 for r in rows if r.label == "flaky"),
+            "still_failing": sum(1 for r in rows if r.label == "still_failing"),
+        }
+
+    out = []
+    for v in versions:
+        out.append(
+            {
+                "version": v.version,
+                "status": v.status,
+                "created_at": v.created_at.isoformat(),
+                "published_at": v.created_at.isoformat(),
+                "instructions": v.instructions,
+                "knowledge": v.knowledge,
+                "retest": _retest_summary(v.version),
+            }
+        )
+    for d in drafts:
+        out.append(
+            {
+                "version": d.version,
+                "status": "draft",
+                "created_at": d.created_at.isoformat(),
+                "published_at": None,
+                "instructions": d.instructions,
+                "knowledge": d.knowledge,
+                "retest": _retest_summary(d.version),
+            }
+        )
+    out.sort(key=lambda x: (x["version"], x["status"]))
+    return out
 
 
 @router.get("/agents/{agent_id}/versions/diff")
