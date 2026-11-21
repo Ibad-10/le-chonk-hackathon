@@ -99,3 +99,4 @@ class TargetConfig(BaseModel):
     owner: str = "house"
     guardian_mode: GuardianMode = "live"
     guardian_enabled: bool = False  # v3: off by default on creator agents, on for house agents
+    hard_limits: dict[str, Any] = Field(default_factory=dict)  # v3: e.g. {"max_payment": 1000}
