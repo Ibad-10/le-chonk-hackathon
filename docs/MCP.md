@@ -43,12 +43,16 @@ From `backend/` (uses `uv run` so the `mcp` SDK dependency resolves):
 # start the backend first, in another terminal, from backend/:
 uv run python -m app.main          # serves http://localhost:8000
 
-# register the MCP server in Vibe's user config (stdio transport):
+# register the MCP server in Vibe's user config (stdio transport).
+# Use --arg=... (equals form) so flags like --project are passed through as args,
+# and the ABSOLUTE path to scripts/run_mcp.py (Vibe launches the command from the
+# current workdir, not from backend/):
+BACKEND=/c/Users/.../mcp-server/backend   # this repo's backend/ directory
 vibe mcp add red-room --transport stdio \
   --command uv \
-  --arg run --arg --project --arg "$(pwd)" --arg python --arg scripts/run_mcp.py \
-  --env RED_ROOM_API_URL=http://localhost:8000 \
-  --env RED_ROOM_CLERK_TOKEN=<your-clerk-session-token>
+  --arg=run --arg=--project --arg="$BACKEND" --arg=python --arg="$BACKEND/scripts/run_mcp.py" \
+  --env=RED_ROOM_API_URL=http://localhost:8000 \
+  --env=RED_ROOM_CLERK_TOKEN=<your-clerk-session-token>
 ```
 
 (`vibe mcp add <name> --transport stdio --command <exe> --arg <arg>... --env <NAME=VALUE>...`
@@ -60,7 +64,8 @@ Check it is registered and serving:
 
 ```bash
 vibe mcp help        # manage servers; `vibe mcp remove red-room` to unregister
-vibe -p "List the agents in Red Room with the red-room MCP tools and summarise them."
+# headless: --auto-approve lets the run call MCP tools without an approval prompt
+vibe -p "List the agents in Red Room with the red-room MCP tools and summarise them." --auto-approve
 ```
 
 ## Example session
@@ -80,8 +85,15 @@ Headless, one prompt:
 
 ```bash
 vibe -p "Use the red-room MCP tools to list agents, then attack Ava with a fake
-fraud-team story in a practice run and show me the logbook." --max-turns 8
+fraud-team story in a practice run and show me the logbook." --max-turns 8 --auto-approve
 ```
+
+Verified live on this branch: with the backend running on `http://localhost:8000` and
+the server registered as above, the headless prompt
+`vibe -p "Use the red-room MCP server tools to list all agents (call the list_agents tool)..." --auto-approve`
+returned the three house agents through `mcp_red_room.list_agents`:
+`bank-ava` (Ava, banking, 1200.0), `shop-max` (Max, support, 1200.0),
+`assistant-pip` (Pip, assistant, 1200.0).
 
 ## Vibe skill: `red-team-my-agent`
 
