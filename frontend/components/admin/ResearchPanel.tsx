@@ -3,6 +3,17 @@
 import { useEffect, useState } from "react";
 import { ExternalLink, TriangleAlert } from "lucide-react";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { getResearchLatest, type ResearchLatest } from "@/lib/adminApi";
 
 export default function ResearchPanel() {
@@ -14,34 +25,57 @@ export default function ResearchPanel() {
   }, []);
 
   return (
-    <section className="rounded-2xl border border-room-line bg-room-panel p-5">
-      <h2 className="font-display text-xl">This week&apos;s scam tactics</h2>
-      {error && (
-        <p role="alert" className="mt-3 flex items-center gap-2 text-sm text-danger">
-          <TriangleAlert size={16} aria-hidden="true" /> {error}
-        </p>
-      )}
-      {data && data.tactics.length === 0 && <p className="mt-3 text-sm text-room-muted">No scan yet.</p>}
-      <ul className="mt-3 space-y-2">
-        {data?.tactics.map((t) => (
-          <li key={t.tactic_name} className="flex items-center justify-between gap-3 rounded-xl bg-room-panel-2 p-3 text-sm">
-            <span>
-              <span className="font-semibold">{t.tactic_name}</span>
-              <span className="ml-2 text-room-muted">{t.family}</span>
-            </span>
-            {t.source_url && (
-              <a
-                href={t.source_url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 text-room-red-soft hover:underline"
-              >
-                Source <ExternalLink size={14} aria-hidden="true" />
-              </a>
-            )}
-          </li>
-        ))}
-      </ul>
-    </section>
+    <Card aria-label="Scam tactics" className="gap-4 py-5">
+      <CardHeader className="px-5">
+        <CardTitle className="font-display text-xl font-normal">This week&apos;s scam tactics</CardTitle>
+      </CardHeader>
+      <CardContent className="px-5">
+        {error && (
+          <Alert variant="destructive">
+            <TriangleAlert aria-hidden="true" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        {!data && !error && (
+          <div role="status" aria-label="Loading tactics" className="space-y-2">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        )}
+        {data && data.tactics.length === 0 && <p className="text-sm text-muted-foreground">No scan yet.</p>}
+        {data && data.tactics.length > 0 && (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Tactic</TableHead>
+                <TableHead>Family</TableHead>
+                <TableHead className="text-right">Source</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.tactics.map((t) => (
+                <TableRow key={t.tactic_name}>
+                  <TableCell className="font-semibold">{t.tactic_name}</TableCell>
+                  <TableCell className="text-muted-foreground">{t.family}</TableCell>
+                  <TableCell className="text-right">
+                    {t.source_url && (
+                      <a
+                        href={t.source_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-room-red-soft hover:underline"
+                      >
+                        Source<span className="sr-only"> for {t.tactic_name} (opens in new tab)</span>{" "}
+                        <ExternalLink size={14} aria-hidden="true" />
+                      </a>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
   );
 }

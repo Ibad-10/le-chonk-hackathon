@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
+import { motion, useReducedMotion } from "motion/react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -14,9 +15,19 @@ import {
   ReceiptText,
   Shield,
   Swords,
+  TriangleAlert,
   type LucideIcon,
 } from "lucide-react";
+import { toast } from "sonner";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
+import { Textarea } from "@/components/ui/textarea";
 import { ApiError, createAgent, getPlacementJob, startPlacement } from "@/lib/api";
 import { MAX_INSTRUCTIONS_CHARS } from "@/lib/types";
 import type { Agent, PlacementJob, Stream, Visibility } from "@/lib/types";
@@ -47,9 +58,6 @@ const STREAM_OPTIONS: { key: Stream; label: string; icon: LucideIcon; blurb: str
 
 const STEPS = ["Stream", "Brief", "Review"];
 
-const field =
-  "mt-1 w-full rounded-lg border border-room-line bg-room-panel-2 px-3 py-2 text-room-text placeholder:text-room-muted focus:border-room-red/70";
-
 /** Map an API failure to a message the owner can act on. */
 export function createErrorMessage(err: unknown): string {
   if (err instanceof ApiError) {
@@ -61,6 +69,7 @@ export function createErrorMessage(err: unknown): string {
 
 export default function CreateWizard() {
   const { getToken } = useAuth();
+  const reduce = useReducedMotion();
   const [step, setStep] = useState(0);
   const [stream, setStream] = useState<Stream | null>(null);
   const [name, setName] = useState("");
@@ -98,6 +107,11 @@ export default function CreateWizard() {
     };
   }, [agent, jobId, jobDone, getToken]);
 
+  // announce the placement result once
+  useEffect(() => {
+    if (placement?.status === "done") toast.success("Placement test finished.");
+  }, [placement?.status]);
+
   async function submit() {
     if (!stream || !briefOk || submitting) return;
     setSubmitting(true);
@@ -109,6 +123,7 @@ export default function CreateWizard() {
         token
       );
       setAgent(created);
+      toast.success(`${created.name} created.`);
       const { job_id } = await startPlacement(created.id, token);
       setPlacement({
         job_id,
@@ -132,109 +147,107 @@ export default function CreateWizard() {
         ? Math.round((placement.progress.done / placement.progress.total) * 100)
         : 0;
     return (
-      <section aria-label="Placement test" className="rounded-2xl border border-room-line bg-room-panel p-6">
-        <h2 className="font-display text-3xl text-room-text">{agent.name}</h2>
-        {placement.status !== "done" ? (
-          <>
-            <p aria-live="polite" className="mt-2 flex items-center gap-2 text-room-muted">
-              <LoaderCircle size={18} aria-hidden="true" className="animate-spin" />
-              Placement test running: sparring bots are raiding your agent to set its starting rating.
-            </p>
-            <div
-              role="progressbar"
-              aria-label="Placement progress"
-              aria-valuenow={pct}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              className="mt-4 h-3 overflow-hidden rounded-full bg-room-panel-2"
-            >
-              <div className="h-full bg-room-red transition-all" style={{ width: `${pct}%` }} />
-            </div>
-            <p className="mt-2 font-mono text-sm text-room-muted">
-              {placement.progress.done} / {placement.progress.total || "…"} raids
-            </p>
-            {error && (
-              <p role="alert" className="mt-3 text-sm text-danger-soft">
-                {error}
+      <Card aria-label="Placement test" className="gap-4 py-6">
+        <CardHeader className="px-6">
+          <CardTitle className="font-display text-3xl font-normal">{agent.name}</CardTitle>
+        </CardHeader>
+        <CardContent className="px-6">
+          {placement.status !== "done" ? (
+            <>
+              <p aria-live="polite" className="flex items-center gap-2 text-muted-foreground">
+                <LoaderCircle size={18} aria-hidden="true" className="animate-spin motion-reduce:animate-none" />
+                Placement test running: sparring bots are raiding your agent to set its starting rating.
               </p>
-            )}
-          </>
-        ) : (
-          <div className="raid-pop">
-            <dl className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-room-line bg-room-line">
-              <div className="bg-room-panel px-5 py-3">
-                <dt className="text-[11px] uppercase tracking-wider text-room-muted">Grade</dt>
-                <dd className="font-mono text-3xl font-bold text-room-text">{placement.grade ?? "—"}</dd>
+              <Progress value={pct} aria-label="Placement progress" className="mt-4" />
+              <p className="mt-2 font-mono text-sm text-muted-foreground">
+                {placement.progress.done} / {placement.progress.total || "…"} raids
+              </p>
+              {error && (
+                <Alert variant="destructive" className="mt-4">
+                  <TriangleAlert aria-hidden="true" />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+            </>
+          ) : (
+            <div className="raid-pop">
+              <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border">
+                <div className="bg-card px-5 py-4">
+                  <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">Grade</dt>
+                  <dd className="font-mono text-3xl font-bold text-foreground">{placement.grade ?? "—"}</dd>
+                </div>
+                <div className="bg-card px-5 py-4">
+                  <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">Starting rating</dt>
+                  <dd className="font-mono text-3xl font-bold tabular-nums text-foreground">
+                    {placement.rating != null ? Math.round(placement.rating) : "—"}
+                  </dd>
+                </div>
+              </dl>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <Button asChild size="lg">
+                  <Link href={`/agents/${agent.id}/owner`}>
+                    <Shield aria-hidden="true" /> Open defend page
+                  </Link>
+                </Button>
+                <Button asChild size="lg" variant="secondary">
+                  <Link href={`/play/${agent.id}?mode=practice`}>
+                    <Swords aria-hidden="true" /> Practice against it
+                  </Link>
+                </Button>
               </div>
-              <div className="bg-room-panel px-5 py-3">
-                <dt className="text-[11px] uppercase tracking-wider text-room-muted">Starting rating</dt>
-                <dd className="font-mono text-3xl font-bold tabular-nums text-room-text">
-                  {placement.rating != null ? Math.round(placement.rating) : "—"}
-                </dd>
-              </div>
-            </dl>
-            <div className="mt-5 flex flex-wrap gap-3">
-              <Link
-                href={`/agents/${agent.id}/owner`}
-                className="inline-flex items-center gap-2 rounded-xl bg-room-red px-5 py-3 font-bold text-room-bg hover:bg-room-red-soft"
-              >
-                <Shield size={18} aria-hidden="true" /> Open defend page
-              </Link>
-              <Link
-                href={`/play/${agent.id}?mode=practice`}
-                className="inline-flex items-center gap-2 rounded-xl border border-room-line bg-room-panel-2 px-5 py-3 font-semibold text-room-text hover:border-room-red/70"
-              >
-                <Swords size={18} aria-hidden="true" /> Practice against it
-              </Link>
             </div>
-          </div>
-        )}
-      </section>
+          )}
+        </CardContent>
+      </Card>
     );
   }
 
   return (
     <div>
-      <ol aria-label="Steps" className="flex gap-2">
+      <ol aria-label="Steps" className="flex flex-wrap gap-2">
         {STEPS.map((label, i) => (
-          <li
-            key={label}
-            aria-current={i === step ? "step" : undefined}
-            className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wider ${
-              i === step
-                ? "border-room-red bg-primary-bg text-room-red-soft"
-                : "border-room-line text-room-muted"
-            }`}
-          >
-            {i + 1}. {label}
+          <li key={label} aria-current={i === step ? "step" : undefined}>
+            <Badge
+              variant={i === step ? "default" : "outline"}
+              className="px-3 py-1 text-xs uppercase tracking-wider"
+            >
+              {i + 1}. {label}
+            </Badge>
           </li>
         ))}
       </ol>
 
-      <div className="mt-6">
+      <motion.div
+        key={step}
+        className="mt-6"
+        initial={reduce ? false : { opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
+      >
         {step === 0 && (
           <fieldset>
-            <legend className="font-display text-3xl text-room-text">Pick a stream</legend>
-            <p className="mt-1 text-sm text-room-muted">
+            <legend className="font-display text-3xl text-foreground">Pick a stream</legend>
+            <p id="stream-hint" className="mt-1 text-sm text-muted-foreground">
               The stream sets the job your agent does and what attackers will try against it.
             </p>
-            <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
               {STREAM_OPTIONS.map(({ key, label, icon: Icon, blurb, attacks }) => (
                 <button
                   key={key}
                   type="button"
                   aria-pressed={stream === key}
+                  aria-describedby="stream-hint"
                   onClick={() => setStream(key)}
-                  className={`flex flex-col rounded-2xl border bg-room-panel p-5 text-left transition hover:-translate-y-0.5 hover:border-room-red/70 ${
-                    stream === key ? "border-room-red" : "border-room-line"
+                  className={`flex flex-col rounded-xl border bg-card p-5 text-left transition hover:border-primary/70 motion-safe:hover:-translate-y-0.5 ${
+                    stream === key ? "border-primary ring-1 ring-primary" : "border-border"
                   }`}
                 >
-                  <span className="grid size-12 place-items-center rounded-xl bg-primary-bg text-room-red">
+                  <span className="grid size-12 place-items-center rounded-xl bg-primary-bg text-primary">
                     <Icon size={24} aria-hidden="true" />
                   </span>
-                  <span className="mt-3 font-display text-3xl leading-none text-room-text">{label}</span>
-                  <span className="mt-1 text-xs font-medium uppercase tracking-wider text-room-muted">{blurb}</span>
-                  <span className="mt-3 text-sm text-room-muted">{attacks}</span>
+                  <span className="mt-3 font-display text-3xl leading-none text-foreground">{label}</span>
+                  <span className="mt-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">{blurb}</span>
+                  <span className="mt-3 text-sm text-muted-foreground">{attacks}</span>
                 </button>
               ))}
             </div>
@@ -242,51 +255,51 @@ export default function CreateWizard() {
         )}
 
         {step === 1 && (
-          <div className="space-y-5">
-            <h2 className="font-display text-3xl text-room-text">Brief your agent</h2>
-            <div>
-              <label htmlFor="agent-name" className="block text-sm font-semibold text-room-text">
-                Name
-              </label>
-              <input
+          <div className="space-y-6">
+            <h2 className="font-display text-3xl text-foreground">Brief your agent</h2>
+            <div className="space-y-2">
+              <Label htmlFor="agent-name">Name</Label>
+              <Input
                 id="agent-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 maxLength={60}
-                className={field}
+                aria-describedby="agent-name-hint"
               />
+              <p id="agent-name-hint" className="text-xs text-muted-foreground">
+                Shown on the leaderboard. Up to 60 characters.
+              </p>
             </div>
-            <div>
-              <label htmlFor="instructions" className="block text-sm font-semibold text-room-text">
-                Instructions
-              </label>
-              <textarea
+            <div className="space-y-2">
+              <Label htmlFor="instructions">Instructions</Label>
+              <Textarea
                 id="instructions"
                 value={instructions}
                 onChange={(e) => setInstructions(e.target.value)}
                 rows={7}
                 aria-describedby="instructions-count"
-                className={field}
+                aria-invalid={over}
               />
               <p
                 id="instructions-count"
                 aria-live="polite"
-                className={`mt-1 text-right font-mono text-xs ${over ? "text-danger-soft" : "text-room-muted"}`}
+                className={`text-right font-mono text-xs ${over ? "text-danger-soft" : "text-muted-foreground"}`}
               >
                 {instructions.length} / {MAX_INSTRUCTIONS_CHARS}
               </p>
             </div>
-            <div>
-              <label htmlFor="knowledge" className="block text-sm font-semibold text-room-text">
-                Knowledge
-              </label>
-              <textarea
+            <div className="space-y-2">
+              <Label htmlFor="knowledge">Knowledge</Label>
+              <Textarea
                 id="knowledge"
                 value={knowledge}
                 onChange={(e) => setKnowledge(e.target.value)}
                 rows={5}
-                className={field}
+                aria-describedby="knowledge-hint"
               />
+              <p id="knowledge-hint" className="text-xs text-muted-foreground">
+                Optional facts the agent may rely on, such as policies or product details.
+              </p>
             </div>
             <div role="group" aria-label="Visibility" className="flex gap-2">
               {(
@@ -295,19 +308,15 @@ export default function CreateWizard() {
                   ["public", "Public", Eye],
                 ] as [Visibility, string, LucideIcon][]
               ).map(([v, label, Icon]) => (
-                <button
+                <Button
                   key={v}
                   type="button"
+                  variant={visibility === v ? "default" : "outline"}
                   aria-pressed={visibility === v}
                   onClick={() => setVisibility(v)}
-                  className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold ${
-                    visibility === v
-                      ? "bg-room-red text-room-bg"
-                      : "border border-room-line bg-room-panel text-room-muted hover:text-room-text"
-                  }`}
                 >
-                  <Icon size={16} aria-hidden="true" /> {label}
-                </button>
+                  <Icon aria-hidden="true" /> {label}
+                </Button>
               ))}
             </div>
           </div>
@@ -315,8 +324,8 @@ export default function CreateWizard() {
 
         {step === 2 && (
           <div>
-            <h2 className="font-display text-3xl text-room-text">Review</h2>
-            <dl className="mt-4 divide-y divide-room-line rounded-2xl border border-room-line bg-room-panel">
+            <h2 className="font-display text-3xl text-foreground">Review</h2>
+            <dl className="mt-4 divide-y divide-border rounded-xl border border-border bg-card">
               {(
                 [
                   ["Stream", streamInfo?.label ?? ""],
@@ -327,48 +336,43 @@ export default function CreateWizard() {
                 ] as [string, string][]
               ).map(([t, v]) => (
                 <div key={t} className="px-5 py-3">
-                  <dt className="text-[11px] uppercase tracking-wider text-room-muted">{t}</dt>
-                  <dd className="mt-0.5 whitespace-pre-wrap text-room-text">{v}</dd>
+                  <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">{t}</dt>
+                  <dd className="mt-1 whitespace-pre-wrap break-words text-foreground">{v}</dd>
                 </div>
               ))}
             </dl>
           </div>
         )}
-      </div>
+      </motion.div>
 
       {error && (
-        <p role="alert" className="mt-4 rounded-lg border border-danger/60 bg-danger-bg px-4 py-3 text-sm text-danger-soft">
-          {error}
-        </p>
+        <Alert variant="destructive" className="mt-6">
+          <TriangleAlert aria-hidden="true" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
 
       <div className="mt-6 flex items-center justify-between gap-3">
-        <button
+        <Button
           type="button"
+          variant="secondary"
           onClick={() => setStep((s) => s - 1)}
           disabled={step === 0 || submitting}
-          className="inline-flex items-center gap-2 rounded-lg border border-room-line bg-room-panel-2 px-4 py-2 text-sm font-semibold text-room-text disabled:opacity-40"
         >
-          <ArrowLeft size={16} aria-hidden="true" /> Back
-        </button>
+          <ArrowLeft aria-hidden="true" /> Back
+        </Button>
         {step < 2 ? (
-          <button
+          <Button
             type="button"
             onClick={() => setStep((s) => s + 1)}
             disabled={step === 0 ? !stream : !briefOk}
-            className="inline-flex items-center gap-2 rounded-xl bg-room-red px-5 py-2.5 font-bold text-room-bg hover:bg-room-red-soft disabled:opacity-50"
           >
-            Next <ArrowRight size={16} aria-hidden="true" />
-          </button>
+            Next <ArrowRight aria-hidden="true" />
+          </Button>
         ) : (
-          <button
-            type="button"
-            onClick={submit}
-            disabled={!stream || !briefOk || submitting}
-            className="inline-flex items-center gap-2 rounded-xl bg-room-red px-5 py-2.5 font-bold text-room-bg hover:bg-room-red-soft disabled:opacity-50"
-          >
+          <Button type="button" onClick={submit} disabled={!stream || !briefOk || submitting}>
             {submitting ? "Creating…" : "Create agent"}
-          </button>
+          </Button>
         )}
       </div>
     </div>

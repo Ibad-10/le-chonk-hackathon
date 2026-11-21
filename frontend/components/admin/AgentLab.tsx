@@ -3,28 +3,33 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { CheckCircle2, FlaskConical, Loader2, RotateCcw, TriangleAlert } from "lucide-react";
+import { toast } from "sonner";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getTrainingCycles, runTrainingCycle, type TrainingCycle } from "@/lib/adminApi";
 
 function CycleCard({ c }: { c: TrainingCycle }) {
   return (
-    <li className="rounded-xl border border-room-line bg-room-panel-2 p-4 text-sm">
-      <div className="flex items-center justify-between gap-2">
+    <li className="rounded-xl border border-border bg-secondary p-4 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="inline-flex items-center gap-1.5 font-semibold">
           {c.kept ? (
             <CheckCircle2 size={16} aria-hidden="true" className="text-agent" />
           ) : (
-            <RotateCcw size={16} aria-hidden="true" className="text-danger" />
+            <RotateCcw size={16} aria-hidden="true" className="text-danger-soft" />
           )}
           {c.kept ? `Kept (v${c.published_version})` : "Rolled back"}
         </span>
-        <time className="font-mono text-xs text-room-muted">{c.created_at.slice(0, 16).replace("T", " ")}</time>
+        <time className="font-mono text-xs text-muted-foreground">{c.created_at.slice(0, 16).replace("T", " ")}</time>
       </div>
-      <p className="mt-2 text-room-muted">
+      <p className="mt-2 text-muted-foreground">
         {c.attacks_run} attacks run, {c.failures_found} failures found
       </p>
-      {!c.kept && <p className="text-room-muted">Reason: {c.reason}</p>}
-      <p className="mt-1 text-xs text-room-muted">Sources: {c.sources.join(", ") || "none"}</p>
+      {!c.kept && <p className="text-muted-foreground">Reason: {c.reason}</p>}
+      <p className="mt-1 text-xs text-muted-foreground">Sources: {c.sources.join(", ") || "none"}</p>
     </li>
   );
 }
@@ -53,6 +58,7 @@ export default function AgentLab({ agentId }: { agentId: string }) {
     try {
       await runTrainingCycle(agentId, await getToken());
       await load();
+      toast.success(`Training cycle finished for ${agentId}.`);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -61,29 +67,39 @@ export default function AgentLab({ agentId }: { agentId: string }) {
   };
 
   return (
-    <section className="rounded-2xl border border-room-line bg-room-panel p-5">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="font-display text-xl">{agentId}</h2>
-        <button
-          onClick={run}
-          disabled={running}
-          className="inline-flex items-center gap-2 rounded-xl bg-room-red px-4 py-2 font-bold text-room-bg hover:bg-room-red-soft disabled:opacity-60"
-        >
+    <Card aria-label={`${agentId} training lab`} className="gap-4 py-5">
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 px-5">
+        <CardTitle className="font-display text-xl font-normal">{agentId}</CardTitle>
+        <Button type="button" onClick={run} disabled={running}>
           {running ? (
-            <Loader2 size={16} aria-hidden="true" className="animate-spin" />
+            <Loader2 aria-hidden="true" className="animate-spin motion-reduce:animate-none" />
           ) : (
-            <FlaskConical size={16} aria-hidden="true" />
+            <FlaskConical aria-hidden="true" />
           )}
           Run training cycle
-        </button>
-      </div>
-      {error && (
-        <p role="alert" className="mt-3 flex items-center gap-2 text-sm text-danger">
-          <TriangleAlert size={16} aria-hidden="true" /> {agentId}: {error}
-        </p>
-      )}
-      {cycles && cycles.length === 0 && <p className="mt-3 text-sm text-room-muted">No cycles yet.</p>}
-      <ul className="mt-3 space-y-2">{cycles?.map((c) => <CycleCard key={c.created_at} c={c} />)}</ul>
-    </section>
+        </Button>
+      </CardHeader>
+      <CardContent className="px-5">
+        <div aria-live="polite">
+          {running && <p className="sr-only">Training cycle running.</p>}
+        </div>
+        {error && (
+          <Alert variant="destructive">
+            <TriangleAlert aria-hidden="true" />
+            <AlertDescription>
+              {agentId}: {error}
+            </AlertDescription>
+          </Alert>
+        )}
+        {!cycles && !error && (
+          <div role="status" aria-label="Loading cycles" className="space-y-2">
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-20 w-full" />
+          </div>
+        )}
+        {cycles && cycles.length === 0 && <p className="text-sm text-muted-foreground">No cycles yet.</p>}
+        <ul className="mt-3 space-y-2">{cycles?.map((c) => <CycleCard key={c.created_at} c={c} />)}</ul>
+      </CardContent>
+    </Card>
   );
 }

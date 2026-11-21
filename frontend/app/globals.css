@@ -31,6 +31,34 @@
   --font-mono: var(--font-geist-mono), monospace;
 }
 
+/* shadcn/ui semantic tokens mapped onto the Radix scales above */
+@import "tw-animate-css";
+
+@theme {
+  --color-background: var(--color-room-bg);
+  --color-foreground: var(--color-room-text);
+  --color-card: var(--color-room-panel);
+  --color-card-foreground: var(--color-room-text);
+  --color-popover: var(--color-room-panel-2);
+  --color-popover-foreground: var(--color-room-text);
+  --color-primary: var(--color-room-red);
+  --color-primary-foreground: var(--color-room-bg);
+  --color-secondary: var(--color-room-panel-2);
+  --color-secondary-foreground: var(--color-room-text);
+  --color-muted: var(--color-room-panel-2);
+  --color-muted-foreground: var(--color-room-muted);
+  --color-accent: var(--color-room-panel-2);
+  --color-accent-foreground: var(--color-room-text);
+  --color-destructive: var(--color-danger);
+  --color-border: var(--color-room-line);
+  --color-input: var(--color-room-line);
+  --color-ring: var(--color-room-red-soft);
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}
+
 html,
 body {
   height: 100%;

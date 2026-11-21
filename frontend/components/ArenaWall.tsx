@@ -4,6 +4,17 @@ import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { ShieldAlert, ShieldCheck } from "lucide-react";
 
+import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
 import {
   getAgentLeaderboard,
   getArenaEvents,
@@ -79,28 +90,31 @@ export default function ArenaWall() {
   return (
     <div
       aria-label="Arena wall"
-      className="fixed inset-0 z-[5] flex flex-col overflow-hidden bg-room-bg px-8 py-6 text-room-text sm:px-16 sm:py-10"
+      className="fixed inset-0 z-[5] flex flex-col overflow-hidden bg-room-bg px-4 py-6 text-foreground sm:px-16 sm:py-10"
     >
       <header className="flex items-baseline justify-between gap-4">
         <h1 className="font-display text-2xl tracking-wide sm:text-4xl">
-          RED<span className="text-room-red"> ROOM</span>{" "}
-          <span className="text-room-muted">— arena wall</span>
+          RED<span className="text-primary"> ROOM</span>{" "}
+          <span className="text-muted-foreground">: arena wall</span>
         </h1>
-        <div role="tablist" aria-label="Wall view" className="flex gap-2">
+        <div
+          role="img"
+          aria-label={`Panel ${WALL_VIEWS.indexOf(view) + 1} of ${WALL_VIEWS.length}`}
+          className="flex gap-2"
+        >
           {WALL_VIEWS.map((v) => (
             <span
               key={v}
-              role="tab"
-              aria-selected={view === v}
+              aria-hidden="true"
               className={`h-2.5 w-2.5 rounded-full ${
-                view === v ? "bg-room-red" : "bg-room-line"
+                view === v ? "bg-primary" : "bg-border"
               }`}
             />
           ))}
         </div>
       </header>
 
-      <p className="mt-1 text-sm uppercase tracking-widest text-room-muted">
+      <p aria-live="off" className="mt-2 text-sm uppercase tracking-widest text-muted-foreground">
         {WALL_VIEW_LABELS[view]}
       </p>
 
@@ -108,7 +122,10 @@ export default function ArenaWall() {
         {view === "ticker" && (
           <ul aria-label="Live ticker" className="space-y-4 overflow-y-auto">
             {events.length === 0 && (
-              <li className="text-xl text-room-muted">Waiting for events…</li>
+              <li role="status" aria-live="polite">
+                <Skeleton className="h-10 w-full" />
+                <span className="sr-only">Waiting for events…</span>
+              </li>
             )}
             {events.map((ev) => (
               <li
@@ -129,54 +146,54 @@ export default function ArenaWall() {
         )}
 
         {view === "leaderboard" && (
-          <table aria-label="Agent leaderboard" className="w-full border-collapse text-left">
-            <thead>
-              <tr className="border-b border-room-line text-room-muted">
-                <th className="py-3 pr-6 text-sm uppercase tracking-wide">#</th>
-                <th className="py-3 pr-6 text-sm uppercase tracking-wide">Agent</th>
-                <th className="py-3 pr-6 text-sm uppercase tracking-wide">Stream</th>
-                <th className="py-3 pr-6 text-sm uppercase tracking-wide">Rating</th>
-                <th className="py-3 pr-6 text-sm uppercase tracking-wide">Grade</th>
-                <th className="py-3 text-sm uppercase tracking-wide">Version</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table aria-label="Agent leaderboard" className="text-left">
+            <TableHeader>
+              <TableRow className="border-border text-muted-foreground">
+                <TableHead className="text-sm uppercase tracking-wide">#</TableHead>
+                <TableHead className="text-sm uppercase tracking-wide">Agent</TableHead>
+                <TableHead className="text-sm uppercase tracking-wide">Stream</TableHead>
+                <TableHead className="text-sm uppercase tracking-wide">Rating</TableHead>
+                <TableHead className="text-sm uppercase tracking-wide">Grade</TableHead>
+                <TableHead className="text-sm uppercase tracking-wide">Version</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {agents.map((a, i) => (
-                <tr key={a.id} className="border-b border-room-line/50">
-                  <td className="py-3 pr-6 font-mono text-room-muted">{i + 1}</td>
-                  <td className="py-3 pr-6 font-display text-xl sm:text-2xl">{a.name}</td>
-                  <td className="py-3 pr-6 text-room-muted">{a.stream}</td>
-                  <td className="py-3 pr-6 font-mono text-lg">
+                <TableRow key={a.id} className="border-border/60">
+                  <TableCell className="font-mono text-muted-foreground">{i + 1}</TableCell>
+                  <TableCell className="font-display text-xl sm:text-2xl">{a.name}</TableCell>
+                  <TableCell className="text-muted-foreground">{a.stream}</TableCell>
+                  <TableCell className="font-mono text-lg">
                     {Math.round(a.rating)}
-                    <span className="text-room-muted"> ±{Math.round(a.rating_deviation)}</span>
-                  </td>
-                  <td className="py-3 pr-6 font-mono text-lg">{a.grade ?? "—"}</td>
-                  <td className="py-3 font-mono text-lg">v{a.current_version}</td>
-                </tr>
+                    <span className="text-muted-foreground"> ±{Math.round(a.rating_deviation)}</span>
+                  </TableCell>
+                  <TableCell className="font-mono text-lg">{a.grade ?? "—"}</TableCell>
+                  <TableCell className="font-mono text-lg">v{a.current_version}</TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
 
         {view === "now_playing" && (
           <div aria-label="Now playing" className="grid h-full grid-cols-1 gap-6 overflow-y-auto sm:grid-cols-2">
             {playing.length === 0 && (
-              <p className="text-xl text-room-muted">No live calls right now.</p>
+              <p className="text-xl text-muted-foreground">No live calls right now.</p>
             )}
             {playing.map((c) => (
-              <article
+              <Card
                 key={c.run_id}
-                className="flex flex-col rounded-2xl border border-room-line bg-room-panel p-6"
+                className="flex flex-col gap-0 p-6"
               >
                 <h2 className="font-display text-2xl">
                   vs {c.agent_name}{" "}
-                  <span className="text-sm font-sans text-room-muted">{c.stream} stream</span>
+                  <span className="text-sm font-sans text-muted-foreground">{c.stream} stream</span>
                 </h2>
                 <ul className="mt-4 space-y-2">
                   {c.captions.map((cap, i) => (
                     <li
                       key={i}
-                      className="rounded-lg bg-room-panel-2 px-3 py-2 text-lg text-room-text"
+                      className="rounded-lg bg-secondary px-3 py-2 text-lg text-foreground"
                     >
                       {cap}
                     </li>
@@ -192,10 +209,10 @@ export default function ArenaWall() {
                     />
                   </div>
                 )}
-                <p className="mt-auto pt-4 text-xs uppercase tracking-wide text-room-muted">
+                <p className="mt-auto pt-4 text-xs uppercase tracking-wide text-muted-foreground">
                   captions only — player opted in
                 </p>
-              </article>
+              </Card>
             ))}
           </div>
         )}
