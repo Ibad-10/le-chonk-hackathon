@@ -65,20 +65,31 @@ def create_agent(
 
 
 def load_runtime(engine: Any, agent_id: str) -> tuple[TargetConfig, str, list[Any]]:
-    """(target, owner instructions, owner knowledge) for a run. Creator agents
-    (owner_id set, config stored) come from the DB; house agents keep loading
-    from targets/."""
+    """(target, owner instructions, owner knowledge) for a run."""
+    return load_runtime_versioned(engine, agent_id)[:3]  # type: ignore[return-value]
+
+
+def load_runtime_versioned(engine: Any, agent_id: str) -> tuple[TargetConfig, str, list[Any], int]:
+    """(target, instructions, knowledge, current version) for a run. Creator
+    agents (owner_id set, config stored) take their target config from the DB;
+    house agents take it from targets/. Both use the instructions + knowledge of
+    their current published version when one exists."""
     if engine is not None:
         with Session(engine) as session:
             agent = session.get(Agent, agent_id)
-            if agent is not None and agent.owner_id is not None and agent.config.get("role_prompt"):
+            if agent is not None:
                 ver = session.get(AgentVersion, (agent_id, agent.current_version))
+                if agent.owner_id is not None and agent.config.get("role_prompt"):
+                    target = TargetConfig.model_validate(agent.config)
+                else:
+                    target = load_target(agent_id)
                 return (
-                    TargetConfig.model_validate(agent.config),
+                    target,
                     ver.instructions if ver else "",
                     list(ver.knowledge) if ver else [],
+                    agent.current_version,
                 )
-    return load_target(agent_id), "", []
+    return load_target(agent_id), "", [], 1
 
 
 # --- placement test ---------------------------------------------------------------

@@ -109,7 +109,9 @@ def test_get_agent_adds_stats_and_stays_safe(tmp_path):
 def test_leaderboards(tmp_path):
     client = _client(tmp_path)
     players = client.get("/leaderboard/players").json()
-    assert [p["handle"] for p in players] == ["other", "owner"]  # xp desc
+    assert [p["name"] for p in players] == ["other", "owner"]  # xp desc
+    # matches frontend PlayerLeaderboardEntry exactly
+    assert all(set(p) == {"player_id", "name", "rating", "wins", "points"} for p in players)
     agents = client.get("/leaderboard/agents").json()
     assert all("rating" in a for a in agents)
     banking = client.get("/leaderboard/agents", params={"stream": "banking"}).json()

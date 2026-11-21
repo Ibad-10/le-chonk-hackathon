@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from app.auth import current_player, is_agent_owner
+from app.auth import current_player, is_admin, is_agent_owner, stream_player
 from app.config import settings
 from app.db import Agent, Player
 from app.models import RunChannel, RunMode
@@ -37,9 +37,24 @@ def get_service(request: Request) -> RunService:
     return request.app.state.run_service
 
 
+PLAYER_MODES = ("arena", "practice")  # genuine is dealt by the server; the rest are admin-only
+
+
+def _own_run(service: RunService, run_id: str, player: Player) -> None:
+    """404 for unknown runs, 403 unless the caller started the run."""
+    try:
+        owner = service.owner_of(run_id)
+    except RunNotFound:
+        raise HTTPException(status_code=404, detail="run not found")
+    if owner != player.id:
+        raise HTTPException(status_code=403, detail="not your run")
+
+
 @router.post("/runs")
 async def start_run(req: StartRunRequest, request: Request, player: Player = Depends(current_player)):
     service = get_service(request)
+    if req.mode not in PLAYER_MODES and not is_admin(player):
+        raise HTTPException(status_code=403, detail=f"mode {req.mode} is admin-only")
     if req.mode == "practice":
         # owner practice runs: allowed on any of the owner's agents even in
         # cooldown; never change Elo or points (RunService gates on arena)
@@ -78,6 +93,7 @@ async def send_message(
     run_id: str, req: MessageRequest, request: Request, player: Player = Depends(current_player)
 ):
     service = get_service(request)
+    _own_run(service, run_id, player)
     try:
         return await service.send_message(run_id, req.text)
     except RunNotFound:
@@ -85,7 +101,9 @@ async def send_message(
 
 
 @router.get("/runs/{run_id}/stream")
-async def stream_message(run_id: str, request: Request, text: str = Query(...)):
+async def stream_message(
+    run_id: str, request: Request, text: str = Query(...), player: Player = Depends(stream_player)
+):
     """Live text chat over server-sent events.
 
     `event: chunk` carries one streamed piece of the agent's reply;
@@ -93,6 +111,7 @@ async def stream_message(run_id: str, request: Request, text: str = Query(...)):
     still go through the sandbox executor and win checks before it).
     """
     service = get_service(request)
+    _own_run(service, run_id, player)
 
     async def gen():
         try:
@@ -107,6 +126,7 @@ async def stream_message(run_id: str, request: Request, text: str = Query(...)):
 @router.post("/runs/{run_id}/end")
 async def end_run(run_id: str, request: Request, player: Player = Depends(current_player)):
     service = get_service(request)
+    _own_run(service, run_id, player)
     try:
         return service.end_run(run_id)
     except RunNotFound:

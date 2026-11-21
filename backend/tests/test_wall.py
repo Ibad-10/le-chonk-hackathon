@@ -192,7 +192,8 @@ def test_now_playing_only_opted_in_live_runs_with_captions(tmp_path):
     cards = client.get("/now-playing").json()
     assert len(cards) == 1
     card = cards[0]
-    assert card["run_id"] == run_id
+    assert card["run_id"] != run_id  # opaque spectate id, never the real run id
+    assert run_id not in str(cards)
     assert card["agent_id"] == "bank-ava"
     assert card["agent_name"] == "Ava"
     assert card["stream"] == "banking"
@@ -202,7 +203,7 @@ def test_now_playing_only_opted_in_live_runs_with_captions(tmp_path):
     assert SECRET in card["captions"][0] or any(SECRET in c for c in card["captions"])  # last lines only
     # ending the run removes it from now-playing
     client.post(f"/runs/{run_id}/end", headers=headers)
-    assert all(c["run_id"] != run_id for c in client.get("/now-playing").json())
+    assert all(c["run_id"] != card["run_id"] for c in client.get("/now-playing").json())
 
 
 def test_spectate_defaults_to_false_and_persists(tmp_path):

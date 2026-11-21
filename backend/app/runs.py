@@ -20,6 +20,7 @@ thin wrappers over `RunService`.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import random
 import time
@@ -33,7 +34,7 @@ from app.config import settings
 from app.db import LogbookEntry
 from app.engine.agent_turn import ToolEvent, agent_turn
 from app.engine.mock_state import MockState
-from app.creator import load_runtime
+from app.creator import load_runtime_versioned
 from app.engine.wins import check_win
 from app.lives import Lives
 from app.llm import LLMClient
@@ -199,6 +200,10 @@ class RunService:
         """Publishing a fixed version clears the cooldown (V4-5)."""
         self._cooldown_until.pop(agent_id, None)
 
+    def owner_of(self, run_id: str) -> str:
+        """The player id that started the run (route ownership checks)."""
+        return self._session(run_id).run.player_id
+
     def brief_for(self, run_id: str) -> dict[str, Any] | None:
         """The player-only brief for the dealt role (never sent to the agent)."""
         return self._session(run_id).brief
@@ -228,7 +233,9 @@ class RunService:
             captions = [t.content for t in run.transcript[-max_captions:]]
             cards.append(
                 {
-                    "run_id": run.id,
+                    # opaque spectate id: the real run id is a capability for
+                    # the run's owner and never goes on the public wall
+                    "run_id": hashlib.sha256(f"spectate:{run.id}".encode()).hexdigest()[:16],
                     "agent_id": run.agent_id,
                     "agent_name": session.target.name,
                     "stream": session.target.stream,
@@ -253,7 +260,7 @@ class RunService:
         spectate: bool = False,
     ) -> Run:
         now = self._now()
-        target, owner_instructions, knowledge = load_runtime(self._engine, agent_id)
+        target, owner_instructions, knowledge, version = load_runtime_versioned(self._engine, agent_id)
         if mode == "arena":
             if not self.arena_available(agent_id, now):
                 raise AgentInCooldown(f"agent {agent_id} is in cooldown")
@@ -265,7 +272,7 @@ class RunService:
             id=uuid.uuid4().hex,
             player_id=player_id,
             agent_id=agent_id,
-            agent_version=1,
+            agent_version=version,
             channel=channel,
             mode=mode,
             mission_id=mission_id,
@@ -282,6 +289,9 @@ class RunService:
             if run.role == "genuine":
                 need = genuine_need(target.stream, self._rng)
                 brief = genuine_brief(state, need)
+                if need.get("payee"):
+                    # the genuine customer's own new payee is not an attacker payee
+                    state.legitimate_payee_names.add(need["payee"].strip().lower())
             else:
                 brief = scammer_brief(state, mission_id)
         self.repo.create(run)
@@ -436,11 +446,11 @@ class RunService:
             run.transcript.append(Turn(role="agent", content=result.reply))
         session.tool_events.extend(result.tool_events)
 
-        # 4. end conditions
+        # 4. end conditions. Tool errors (unknown payee, insufficient funds...)
+        # went back to the agent as ok=false tool results inside agent_turn;
+        # only LLM/infra failures (the except above) end the run as error.
         executed = [ev.call for ev in session.tool_events if ev.ok]
-        if any(ev.error for ev in session.tool_events):
-            self._finish(session, "error")
-        elif check_win(
+        if check_win(
             session.target, run.mission_id or "", executed, session.state, result.reply
         ):
             self._finish(session, "win")
@@ -449,6 +459,49 @@ class RunService:
 
         self.repo.update(run)  # persist transcript after every handled message
         return self._response(session, reply=result.reply)
+
+    def _apply_elo(self, run: Run, result: str) -> None:
+        """Elo update for an arena run; persisted to the DB when there is one
+        (agents.rating/rating_deviation, players.xp += points). The player's
+        rating is derived from the sum of persisted runs.elo_delta."""
+        player_elo = self._player_elo.get(run.player_id)
+        agent = self._agent_elo.get(run.agent_id)
+        if self._engine is not None and (player_elo is None or agent is None):
+            from sqlmodel import Session, func, select
+
+            from app.db import Agent, RunRow
+
+            with Session(self._engine) as db:
+                if player_elo is None:
+                    total = db.exec(
+                        select(func.sum(RunRow.elo_delta)).where(
+                            RunRow.player_id == run.player_id, RunRow.id != run.id
+                        )
+                    ).one()
+                    player_elo = START_ELO + float(total or 0.0)
+                if agent is None:
+                    row = db.get(Agent, run.agent_id)
+                    if row is not None:
+                        agent = (row.rating, row.rating_deviation)
+        player_elo = START_ELO if player_elo is None else player_elo
+        agent_elo, agent_rd = agent or (START_ELO, START_RD)
+        new_p, new_a, new_rd = elo_update(player_elo, agent_elo, result, agent_rd)  # type: ignore[arg-type]
+        self._player_elo[run.player_id] = new_p
+        self._agent_elo[run.agent_id] = (new_a, new_rd)
+        run.elo_delta = new_p - player_elo
+        if self._engine is not None:
+            from sqlmodel import Session
+
+            from app.db import Agent, Player
+
+            with Session(self._engine) as db:
+                row = db.get(Agent, run.agent_id)
+                if row is not None:
+                    row.rating, row.rating_deviation = new_a, new_rd
+                player = db.get(Player, run.player_id)
+                if player is not None:
+                    player.xp += run.points
+                db.commit()
 
     def _response(self, session: RunSession, reply: str | None) -> dict[str, Any]:
         run = session.run
@@ -551,21 +604,11 @@ class RunService:
                 outcome,
             ) if run.mode == "arena" else 0
             if run.mode == "arena":
-                player_elo = self._player_elo.get(run.player_id, START_ELO)
-                agent_elo, agent_rd = self._agent_elo.get(run.agent_id, (START_ELO, START_RD))
-                new_p, new_a, new_rd = elo_update(player_elo, agent_elo, outcome, agent_rd)  # type: ignore[arg-type]
-                self._player_elo[run.player_id] = new_p
-                self._agent_elo[run.agent_id] = (new_a, new_rd)
-                run.elo_delta = new_p - player_elo
+                self._apply_elo(run, outcome)
         elif outcome in ("timeout", "abandoned") and run.mode == "arena":
             # the agent was not broken after >= 3 player messages: a win for
             # the agent ("block")
-            player_elo = self._player_elo.get(run.player_id, START_ELO)
-            agent_elo, agent_rd = self._agent_elo.get(run.agent_id, (START_ELO, START_RD))
-            new_p, new_a, new_rd = elo_update(player_elo, agent_elo, "block", agent_rd)
-            self._player_elo[run.player_id] = new_p
-            self._agent_elo[run.agent_id] = (new_a, new_rd)
-            run.elo_delta = new_p - player_elo
+            self._apply_elo(run, "block")
 
         # lives refunds (arena only)
         if run.mode == "arena":
