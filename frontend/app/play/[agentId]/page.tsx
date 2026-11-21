@@ -1,7 +1,8 @@
 "use client";
 
-import { Suspense, use, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 
@@ -9,9 +10,23 @@ import BattleView from "@/components/BattleView";
 import MessageCounter, { useMessageLimit } from "@/components/MessageCounter";
 import TimerRing from "@/components/TimerRing";
 import { endRun, getAgent, getRoleBrief, startRun, streamMessage } from "@/lib/api";
+
+import {
+  causeFamilyOf,
+  endBanner,
+  isPoliteDecline,
+  toolEventToBaseEvent,
+  type BaseEvent,
+} from "@/lib/base";
 import { MAX_PLAYER_MESSAGES, TEXT_RUN_SECONDS } from "@/lib/format";
 import type { BattleEvent } from "@/lib/battle";
 import type { Agent, RoleBrief, RunResult } from "@/lib/types";
+
+// three.js needs the DOM — no SSR.
+const LiveBase = dynamic(() => import("@/components/base/LiveBase"), {
+  ssr: false,
+  loading: () => <p className="p-8 text-room-muted">Raising the base…</p>,
+});
 
 interface ChatMessage {
   role: "player" | "agent";
@@ -52,10 +67,18 @@ function PlayPageInner({ agentId }: { agentId: string }) {
   const [result, setResult] = useState<RunResult | null>(null);
   const [battleOn, setBattleOn] = useState(false);
   const [battleEvents, setBattleEvents] = useState<BattleEvent[]>([]);
+  const [view, setView] = useState<"base" | "chat">("base"); // Base view is the default
+  const [baseEvents, setBaseEvents] = useState<BaseEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const limit = useMessageLimit(MAX_PLAYER_MESSAGES);
   const runIdRef = useRef<string | null>(null);
   runIdRef.current = runId;
+
+  // end-of-run banner for the base (stars / conquest / defended / treaty / helped)
+  const baseBanner = useMemo(
+    () => (result ? endBanner(baseEvents, { role: brief?.role, outcome: result.outcome }) : null),
+    [result, baseEvents, brief]
+  );
 
   // playing requires sign-in
   useEffect(() => {
@@ -94,11 +117,17 @@ function PlayPageInner({ agentId }: { agentId: string }) {
     if (!id || result) return;
     const token = isSignedIn ? await getToken() : null;
     try {
-      setResult(await endRun(id, token));
+      const res = await endRun(id, token);
+      setResult(res);
+      // runEnded drives the base (stars / conquest / "Base defended" screen)
+      setBaseEvents((e) => [
+        ...e,
+        { type: "runEnded", outcome: res.outcome, role: brief?.role, helpfulness: res.helpfulness },
+      ]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "could not end run");
     }
-  }, [getToken, isSignedIn, result]);
+  }, [getToken, isSignedIn, result, brief]);
 
   const send = useCallback(async () => {
     const text = draft.trim();
@@ -109,6 +138,11 @@ function PlayPageInner({ agentId }: { agentId: string }) {
     setSending(true);
     setMessages((m) => [...m, { role: "player", content: text }]);
     setBattleEvents((e) => [...e, { type: "player_message" }]);
+    // live base: a troop squad spawns immediately and marches at its target
+    setBaseEvents((e) => [
+      ...e,
+      { type: "playerMessage", text, tactic: causeFamilyOf(text) },
+    ]);
     setStreaming("");
     const token = isSignedIn ? await getToken() : null;
     await streamMessage(
@@ -124,6 +158,19 @@ function PlayPageInner({ agentId }: { agentId: string }) {
               .filter((t) => t.ok)
               .map(() => ({ type: "tool_executed", risky: true }) as BattleEvent),
             ...(event.ended && event.outcome === "win" ? [{ type: "win" } as BattleEvent] : []),
+          ]);
+          // live base beats: envoy / sent back / defeated, read tools, risky tools
+          setBaseEvents((e) => [
+            ...e,
+            {
+              type: "agentReply",
+              text: event.reply ?? "",
+              refused: event.tool_events.length === 0,
+              polite: isPoliteDecline(event.reply),
+            },
+            ...event.tool_events
+              .map(toolEventToBaseEvent)
+              .filter((b): b is BaseEvent => b !== null),
           ]);
           setStreaming((s) => {
             setMessages((m) => [
@@ -188,6 +235,32 @@ function PlayPageInner({ agentId }: { agentId: string }) {
             >
               ⚔️ Battle view {battleOn ? "on" : "off"}
             </button>
+            <div className="flex gap-2" role="group" aria-label="View">
+              <button
+                type="button"
+                onClick={() => setView("base")}
+                aria-pressed={view === "base"}
+                className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium ${
+                  view === "base"
+                    ? "border-room-red bg-room-red/15 text-room-red-soft"
+                    : "border-room-line bg-room-panel-2 text-room-muted hover:text-room-text"
+                }`}
+              >
+                🏰 Base {view === "base" ? "on" : "off"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setView("chat")}
+                aria-pressed={view === "chat"}
+                className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium ${
+                  view === "chat"
+                    ? "border-room-red bg-room-red/15 text-room-red-soft"
+                    : "border-room-line bg-room-panel-2 text-room-muted hover:text-room-text"
+                }`}
+              >
+                💬 Chat only
+              </button>
+            </div>
             <button
               type="button"
               disabled
@@ -239,9 +312,23 @@ function PlayPageInner({ agentId }: { agentId: string }) {
         </div>
       )}
 
+      <div className={view === "base" ? "relative lg:grid lg:grid-cols-[1fr_360px] lg:items-start lg:gap-4" : ""}>
+        {view === "base" && (
+          <LiveBase
+            agentId={agentId}
+            stream={agent?.stream ?? "banking"}
+            events={baseEvents}
+            height="58vh"
+          />
+        )}
+
       <section
         aria-label="Chat"
-        className="flex min-h-[60vh] flex-col rounded-xl border border-room-line bg-room-panel"
+        className={`flex flex-col rounded-xl border border-room-line bg-room-panel ${
+          view === "base"
+            ? "min-h-[38vh] max-lg:absolute max-lg:inset-x-2 max-lg:bottom-2 max-lg:max-h-[52%] max-lg:bg-room-panel/95 max-lg:shadow-xl"
+            : "min-h-[60vh]"
+        }`}
       >
         <div className="flex-1 space-y-3 overflow-y-auto p-5">
           {messages.length === 0 && !streaming && (
@@ -300,6 +387,7 @@ function PlayPageInner({ agentId }: { agentId: string }) {
           </button>
         </form>
       </section>
+      </div>
 
       {result && (
         <section
@@ -316,6 +404,20 @@ function PlayPageInner({ agentId }: { agentId: string }) {
                   : "The agent held"}
           </h2>
           <p className="mt-2 text-room-muted">{outcomeLabel(result)}</p>
+          {baseBanner && (
+            <div className="mt-3 flex items-center gap-3">
+              {baseBanner.stars !== null && (
+                <span
+                  className="font-display text-3xl tracking-widest text-room-red-soft"
+                  aria-label={`${baseBanner.stars} stars`}
+                >
+                  {"★".repeat(baseBanner.stars)}
+                  <span className="text-room-line">{"★".repeat(3 - baseBanner.stars)}</span>
+                </span>
+              )}
+              <span className="text-sm font-semibold text-room-text">{baseBanner.label}</span>
+            </div>
+          )}
           <p className="mt-3 font-mono text-sm text-room-text">
             +{result.points} points · Elo{" "}
             {result.elo_delta >= 0 ? "+" : ""}
