@@ -1,20 +1,87 @@
 <h1 align="center">Red Room</h1>
 
-<p align="center"><b>Talk them into it. If you can.</b><br/>
-Red Room is the arena where AI agents prove they cannot be talked into sending money, leaking files or handing out refunds, by live voice or chat in any language. Anyone builds an agent, the crowd attacks it, and every loss lands in the owner's logbook. Owners fix what broke, prove the fix, publish a new version and earn a rating.</p>
+<p align="center"><b>Talk them into it. If you can.</b></p>
+
+Red Room is an arena where AI agents prove they cannot be talked into sending money, leaking files or handing out refunds. Players attack agents by live voice or chat, in any language. Every loss lands in the owner's logbook, and owners fix what broke, prove the fix with a retest, publish a new version and earn a rating.
 
 <p align="center">
+  Live app: <a href="https://red-room-steel.vercel.app">https://red-room-steel.vercel.app</a> ·
   <a href="https://github.com/Ibad-10/le-chonk-hackathon">GitHub repo</a> ·
-  Live app: https://red-room-steel.vercel.app ·
-  <a href="#demo">Demo video</a>
+  Demo video: TBD
 </p>
 
-Built in one day at Le Chonk in London, the Mistral Vibe Hackathon, 21 November 2026. Every line of code and every commit in this repository was written by Mistral Vibe running on Mistral Large 4.
+Built at Le Chonk in London (Mistral Vibe Hackathon, 21 November 2026). The backend was built with Mistral Vibe on Mistral Large 4. Later features and fixes were done with Claude Code. Team: Ibad Ullah Zuberi, Zohaib (UI polish) and teammates.
 
 ## Try it
 
-- **Play.** Sign in, pick Ava (bank), Max (refunds) or Pip (assistant), then chat or call and try to make it move money.
-- **Build your own.** Go to `/create`, run the placement test, then defend your agent from `/agents/{id}/owner`.
+1. **Attack a house agent.** Sign in, pick Ava (bank), Max (refunds) or Pip (assistant) and try to make it move money or leak a file. Chat with text (streamed replies) or call with live voice.
+2. **Build your own agent.** Go to `/create`, pick a stream, write instructions and knowledge, and run the placement test. You can own up to 3 agents.
+3. **Defend it.** Open `/agents/{id}/owner`. Read the logbook and the breaking moment, edit a draft, retest it 3 times with sibling variants, then publish a new version.
+4. **Visit the 3D village base** at `/agents/{id}/base` and the knowledge graph at `/agents/{id}/graph`.
+5. **Climb the leaderboards** at `/leaderboard` and watch the arena wall at `/arena-wall`.
+6. **Play the daily challenge** at `/challenge` to earn XP and ranks.
+7. **Admin only:** the House agents lab at `/admin` runs the research agent and training cycles.
+8. **Red Room MCP server for Vibe.** Attack an agent and read its logbook from inside Vibe. See [docs/MCP.md](docs/MCP.md).
+
+## What works today
+
+| Feature | Status | Where in the code |
+|---|---|---|
+| Live text chat with streamed replies | Working | `backend/app/routes/runs.py` (`/runs/{id}/stream`), `frontend/components/raid.tsx` |
+| Live voice: Voxtral realtime in, TTS out, barge-in, mute | Working | `backend/app/voice_live.py`, `backend/app/routes/voice_live.py`, `frontend/components/voice/CallPanel.tsx` |
+| Language detection, reply in the caller's language | Working | `backend/app/voice_live.py`, `backend/app/runs.py` |
+| Three streams with sandbox tools (bank, refunds, assistant) | Working | `backend/app/engine/tools/`, `backend/app/engine/executor.py`, `targets/` |
+| Code-decided wins, including split payments | Working | `backend/app/engine/wins.py` |
+| Dealt hidden roles and helpfulness scoring | Working | `backend/app/roles.py`, `backend/app/runs.py` |
+| Moderation and card/bank number filter | Working | `backend/app/moderation.py` |
+| Logbook and Large 4 analyst on the Mistral Agents SDK | Working | `backend/app/analyst.py`, `backend/app/routes/owner.py` |
+| Retest loop with sibling variants and generalisation score | Working | `backend/app/retest.py`, `frontend/components/RetestPanel.tsx` |
+| Versions and Elo with rating deviation | Partial | `backend/app/scoring.py`, `backend/app/runs.py`. Elo is held in memory (see In progress). |
+| Cooldown after a loss | Working | `backend/app/lives.py`, `frontend/components/CooldownBadge.tsx` |
+| Create agent, placement test, 3-agent limit | Working | `backend/app/creator.py`, `backend/app/routes/agents.py`, `frontend/components/CreateWizard.tsx` |
+| Owner dashboard (logbook, draft, retest, publish) | Working | `frontend/components/defend.tsx`, `frontend/app/agents/[id]/owner` |
+| Knowledge graph | Working | `backend/app/routes/owner.py` (`/graph`), `frontend/app/agents/[id]/graph` |
+| 3D village base | Partial | `frontend/components/base/`. Rendering is being improved. |
+| Siege 2D view | Working | `frontend/components/Siege.tsx`, `SiegeReplay.tsx` |
+| Leaderboards (players and agents) | Working | `backend/app/routes/agents.py`, `frontend/app/leaderboard` |
+| Arena wall | Working | `backend/app/routes/wall.py`, `frontend/components/ArenaWall.tsx` |
+| Daily challenge and XP ranks | Partial | `backend/app/challenge.py`, `frontend/app/challenge`. XP persistence is in progress. |
+| Research agent with web search, house-agent training cycles with rollback | Working | `backend/app/research_agent.py`, `backend/app/training.py`, `backend/app/routes/training.py` |
+| Admin House agents lab | Working | `frontend/app/admin`, `frontend/components/admin/` |
+| Red Room MCP server | Working | `backend/app/mcp_server.py`, `backend/scripts/run_mcp.py`, [docs/MCP.md](docs/MCP.md) |
+| Clerk auth and verified voice WebSocket | Working | `backend/app/auth.py`, `backend/app/routes/voice_live.py` |
+| Supabase Postgres | Working | `backend/app/db.py`, `supabase/` |
+| Vercel deploy (frontend) | Working | `docs/DEPLOY.md` |
+| Run ownership checks on message, stream and end | In progress | `backend/app/routes/runs.py` |
+| Hosted backend | Planned | The backend runs on a laptop behind a tunnel today |
+
+## In progress (being fixed now)
+
+- Run ownership checks on message, stream and end. Today only starting a practice run checks the owner.
+- Published versions used in live play, so a live run always uses the version the owner published.
+- Genuine payee success, so a genuine customer's real payment counts as success.
+- Tool errors continue the run instead of ending it.
+- Elo and XP persistence. Elo and player ratings are held in memory and reset when the backend restarts.
+- 3D village textures, lighting and troops.
+
+## Roadmap
+
+**Next**
+- Hosted backend instead of a laptop tunnel.
+- Stripe test-mode First Blood bounties on house agents.
+- Agent duels.
+- Company private arenas and invite-only arenas.
+- Export package and Guardian-free hardened agent packs.
+- Public and private sharing, a try-my-agent link, an embed widget and a private API endpoint.
+- CI regression check as a GitHub Action.
+- Robustness report.
+- Notifications.
+- More streams: letting agent, IT helpdesk, HR, airline, coding agent, smart home.
+- Heist chains across agents.
+- Per-agent LoRA adapters and self-hosted open-weight Mistral for enterprises.
+- Workflow for analyse, approve, retest.
+
+**The goal.** An arena and a credit-rating style grade for any AI agent that takes actions. The crowd finds the holes before scammers do, and owners leave with an agent that holds.
 
 ---
 
@@ -127,8 +194,8 @@ Every AI call in Red Room uses Mistral models through the Mistral API.
 | Voice in and out | Voxtral 3 realtime transcription and TTS (Best use of Voxtral) |
 | Safety screen on every input | Mistral moderation API |
 | Grouping similar failures in the logbook | Mistral embeddings |
-| Writing this repository | Mistral Vibe running on Large 4 |
-| Attacking an agent from inside Vibe | Red Room MCP server (planned) |
+| Writing the backend | Mistral Vibe running on Large 4 (later work with Claude Code) |
+| Attacking an agent from inside Vibe | Red Room MCP server |
 
 ## Why it fixes causes, not examples
 
@@ -153,7 +220,7 @@ Note: Large 4's licence limits reselling the model itself as a hosted service, s
 
 **Business model.** Company arenas (private, invite-only), managed hosting per check, the A-F grade and exam reports, and enterprise workspaces where staff attack and train their own agents, which doubles as security training.
 
-**Rewards.** Entry is free, which keeps the game clear of UK gambling and prize-competition rules. Players earn points, ranks and badges; no real money moves. Stripe test-mode payouts are a planned extra, not part of the hackathon build. Blockchain was dropped on purpose: wallets add friction most players will not accept.
+**Rewards.** Entry is free, which keeps the game clear of UK gambling and prize-competition rules. Players earn points, ranks and badges; no real money moves. Stripe test-mode First Blood bounties are on the roadmap. Blockchain was dropped on purpose: wallets add friction most players will not accept.
 
 ## How Red Room is different
 
@@ -167,22 +234,29 @@ Note: Large 4's licence limits reselling the model itself as a hosted service, s
 ## Safety by design
 
 - **Fictional brands only.** The bank is Chonk & Co Bank. No real banks, real people's voices, card numbers or sort codes.
-- **No real money.** Rewards are points and ranks; the sandbox ledger is fake. Stripe test-mode payouts are a planned extra.
+- **No real money.** Rewards are points and ranks; the sandbox ledger is fake. Stripe test-mode First Blood bounties are on the roadmap.
 - **Narrow moderation.** Only hate, sexual, self-harm and violence categories are blocked, plus card and bank number regex hits. Scam attempts are the game and are never blocked.
 - **Owner privacy.** Prompts, knowledge graphs and transcripts are owner-only. Public pages show rating, grade and stats, never the graph.
 - **Defences public, scripts never.** Red Room publishes red flags and rules, never the winning scam scripts.
 - **Spectator consent.** Live calls can be watched only if the player allows it, with opt-in captions and no private details shown.
 
+## Architecture
+
+The three diagrams in "How it works" show the owner loop, one conversation turn and dealt roles. The safety screen is Mistral moderation plus a regex filter, and wins are decided by code.
+
 ## Tech
 
-FastAPI · SQLModel on Supabase Postgres · Clerk · Next.js · Mistral SDK · Voxtral for voice.
+FastAPI, SQLModel on Supabase Postgres, Clerk, Next.js, Mistral SDK, Voxtral for voice, three.js for the village base.
 
 ```
-backend/    FastAPI app: runs, logbook, analyst, retest loop, scoring, moderation, auth
-frontend/   Next.js app: arena, live call and chat, owner dashboard, leaderboards
+backend/    FastAPI app: runs, logbook, analyst, retest, scoring, moderation, auth, voice, MCP server
+  app/engine/   agent turn, sandbox tools, win checks
+  app/routes/   HTTP and WebSocket routes
+  tests/        pytest suite
+frontend/   Next.js app: app/ pages and components/ (raid, defend, voice, base, admin, challenge)
 targets/    stream definitions for the three house agents (bank-ava, shop-max, assistant-pip)
-data/       prepared inputs: fictional customers, missions, tactic taxonomy, frozen exam cases
-docs/       specs, plans, competitor analysis, system flow
+data/       fictional customers, missions, tactic taxonomy, frozen exam cases
+docs/       specs, plans, MCP, deploy runbook, competitor analysis
 supabase/   database migrations
 ```
 
@@ -196,10 +270,19 @@ cd frontend && npm install && npm run dev
 
 Required variables, by name: `MISTRAL_API_KEY`, `MISTRAL_MODEL_MAIN`, `MISTRAL_MODEL_FALLBACK`, `MISTRAL_MODERATION_MODEL`, `MISTRAL_EMBED_MODEL`, `VOXTRAL_STT_REALTIME_MODEL`, `VOXTRAL_STT_BATCH_MODEL`, `VOXTRAL_TTS_MODEL`, `VOXTRAL_VOICE_AVA`, `VOXTRAL_VOICE_MAX`, `VOXTRAL_VOICE_PIP`, `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, plus the run limits and role settings (`RUN_VOICE_S`, `RUN_TEXT_S`, `RUN_TEXT_MESSAGES`, `RUN_IDLE_S`, `GENUINE_RATE`, `ARENA_COOLDOWN_S`) and the app wiring (`BACKEND_URL`, `NEXT_PUBLIC_BACKEND_URL`, `ADMIN_PLAYER_IDS`). The `.env.example` also lists testnet chain variables; v4 pays rewards through Stripe test mode instead, so they are unused.
 
+## Deploy
+
+- **Frontend:** Vercel. No `vercel.json` is needed; Vercel detects the Next.js app in `frontend/`. Set `NEXT_PUBLIC_BACKEND_URL` to the backend's public URL.
+- **Backend:** runs on a laptop, exposed with a cloudflared quick tunnel. The tunnel URL changes each run, so update the Vercel env var.
+- **Docker:** `backend/Dockerfile` exists for later hosting.
+- **Hugging Face:** Docker Spaces need a PRO plan, so they are not used.
+
+Full steps are in [docs/DEPLOY.md](docs/DEPLOY.md).
+
 ## Demo
 
 Demo video: TBD, coming with the hackathon submission.
 
 ## Team
 
-Ibad Ullah Zuberi ([@Ibad-10](https://github.com/Ibad-10)). Teammates TBD.
+Ibad Ullah Zuberi ([@Ibad-10](https://github.com/Ibad-10)), Zohaib (UI polish) and teammates.
