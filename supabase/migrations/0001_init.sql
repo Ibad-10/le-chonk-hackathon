@@ -185,16 +185,36 @@ create table if not exists public.waves (
   pool numeric not null default 0
 );
 
--- leaderboard views (public read data) -----------------------------------------
+-- public_events: sanitized ticker events only (e.g. "version_published",
+-- "agent_beaten" with tactic family). NEVER scripts, transcripts or private
+-- data. The BACKEND (service role) is the only writer of public_events.
+create table if not exists public.public_events (
+  id bigserial primary key,
+  type text not null,
+  agent_id text,
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+-- leaderboard / public views --------------------------------------------------
+-- Safe-column views: public pages must NEVER see wallet_address, is_admin,
+-- lives, agents.config (owner prompts and Guardian rules) or rulebooks, so
+-- the base tables below get NO public select policies; only these views are
+-- exposed (views owned by the migration role read past RLS).
 create or replace view public.leaderboard_players as
 select id, handle, team, xp, rank
 from public.players
 order by xp desc;
 
 create or replace view public.leaderboard_agents as
-select id, name, domain, stream, rating, current_version, guardian_enabled
+select id, name, domain, stream, rating, rating_deviation, current_version
 from public.agents
 order by rating desc;
+
+create or replace view public.public_agent_versions as
+select agent_id, version, status, grade_score, exam_catch_rate, exam_false_block_rate, created_at
+from public.agent_versions
+order by agent_id, version desc;
 
 -- Row Level Security: public read on agents, agent_versions and leaderboard
 -- data; NO client writes anywhere (the backend writes with the service key,
@@ -213,26 +233,25 @@ alter table public.retro_results   enable row level security;
 alter table public.graph_events    enable row level security;
 alter table public.payouts         enable row level security;
 alter table public.waves           enable row level security;
+alter table public.public_events   enable row level security;
 
--- Public (anon + authenticated) read-only policies. Deliberately no INSERT /
--- UPDATE / DELETE policies for clients: the backend is the only writer.
-create policy "public read agents" on public.agents
+-- Public (anon + authenticated) read-only access:
+--  - NO select policies on the base tables players / agents / agent_versions
+--    (they hold wallet_address, is_admin, lives, agents.config with prompts
+--    and Guardian rules, and rulebooks). Safe columns are exposed only via
+--    the views above.
+--  - public_events carries only sanitized ticker events, so it is readable.
+-- Deliberately no INSERT / UPDATE / DELETE policies for clients anywhere:
+-- the backend is the only writer (service role bypasses RLS).
+grant select on public.leaderboard_players to anon, authenticated;
+grant select on public.leaderboard_agents to anon, authenticated;
+grant select on public.public_agent_versions to anon, authenticated;
+
+create policy "public read sanitized events" on public.public_events
   for select to anon, authenticated using (true);
 
-create policy "public read agent_versions" on public.agent_versions
-  for select to anon, authenticated using (true);
-
-create policy "public read leaderboard players" on public.players
-  for select to anon, authenticated using (true);
-
-create policy "public read leaderboard views" on public.leaderboard_players
-  for select to anon, authenticated using (true);
-
-create policy "public read leaderboard agents view" on public.leaderboard_agents
-  for select to anon, authenticated using (true);
-
--- Realtime for the live game views (applied by the migration runner, not the client).
-alter publication supabase_realtime add table public.runs;
+-- Realtime: only sanitized ticker events and version rows are published.
+-- runs, graph_events and payouts hold transcripts and private data and must
+-- NEVER be published to the browser.
+alter publication supabase_realtime add table public.public_events;
 alter publication supabase_realtime add table public.agent_versions;
-alter publication supabase_realtime add table public.graph_events;
-alter publication supabase_realtime add table public.payouts;
