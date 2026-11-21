@@ -27,6 +27,7 @@ class Settings:
     voxtral_stt_realtime_model: str = _get("VOXTRAL_STT_REALTIME_MODEL", "voxtral-mini-transcribe-realtime-3-0")
     voxtral_stt_batch_model: str = _get("VOXTRAL_STT_BATCH_MODEL", "voxtral-mini-transcribe-3-0")
     voxtral_tts_model: str = _get("VOXTRAL_TTS_MODEL", "voxtral-mini-tts-3-0")
+    voxtral_tts_sample_rate: int = int(_get("VOXTRAL_TTS_SAMPLE_RATE", "24000"))  # pcm f32le mono
     voxtral_voice_ava: str = _get("VOXTRAL_VOICE_AVA")
     voxtral_voice_max: str = _get("VOXTRAL_VOICE_MAX")
     voxtral_voice_pip: str = _get("VOXTRAL_VOICE_PIP")

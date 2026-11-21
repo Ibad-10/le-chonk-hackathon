@@ -17,6 +17,7 @@ from app.llm import MistralLLM
 from app.repo import SQLiteRunsRepo
 from app.routes.runs import router as runs_router
 from app.routes.voice import router as voice_router
+from app.routes.voice_live import router as voice_live_router
 from app.runs import RunService
 
 
@@ -42,6 +43,7 @@ app.add_middleware(
 
 app.include_router(runs_router)
 app.include_router(voice_router)
+app.include_router(voice_live_router)
 
 
 @app.get("/health")

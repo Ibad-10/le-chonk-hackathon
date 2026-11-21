@@ -245,10 +245,10 @@ class RunService:
         finally:
             await sentinel()
 
-    def end_run(self, run_id: str) -> dict[str, Any]:
+    def end_run(self, run_id: str, outcome: str = "abandoned") -> dict[str, Any]:
         session = self._session(run_id)
         if session.run.outcome is None:
-            self._finish(session, "abandoned")
+            self._finish(session, outcome)
         return {"run_id": run_id, "outcome": session.run.outcome}
 
     # -- internals ----------------------------------------------------------

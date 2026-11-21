@@ -1,10 +1,13 @@
 "use client";
 
-// V4-10 call panel: hold Space (or the button) to talk to the agent.
-// Shows both sides' captions, the call timer (voice limit 300 s) and
-// "Ava is thinking…" while the agent turn runs (nothing plays then).
+// Live call panel (product decision: the call is LIVE like a phone call —
+// no hold-to-talk). The player just talks; the agent hears live, replies by
+// voice, and can be interrupted. One round mic button toggles Mute/Unmute
+// (aria-pressed, Space toggles, touch works); "End call" ends the run. If the
+// WebSocket or mic streaming fails, the hook falls back to push-to-talk
+// automatically and the panel shows the hold-to-talk button instead.
 
-import { useVoiceCall } from "@/lib/useVoiceCall";
+import { useLiveCall } from "@/lib/useLiveCall";
 
 function formatClock(seconds: number | null): string {
   if (seconds === null) return "--:--";
@@ -16,16 +19,17 @@ function formatClock(seconds: number | null): string {
 const STATUS_LABEL: Record<string, string> = {
   idle: "Start the call",
   connecting: "Connecting…",
-  ready: "Hold Space to talk",
-  recording: "Recording… release Space to send",
-  thinking: "is thinking…",
-  speaking: "Speaking…",
+  live: "Live — just talk",
+  muted: "Muted — Space to unmute",
+  agentSpeaking: "Speaking… (talk to interrupt)",
   ended: "Call ended",
 };
 
 export default function CallPanel({ agentId = "bank-ava" }: { agentId?: string }) {
-  const call = useVoiceCall(agentId, "Ava");
-  const { status, captions, secondsLeft, error } = call;
+  const call = useLiveCall(agentId, "Ava");
+  const { status, captions, secondsLeft, error, mode } = call;
+  const live = mode === "live";
+  const inCall = status !== "idle" && status !== "ended";
 
   return (
     <div className="flex w-full max-w-xl flex-col gap-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
@@ -33,18 +37,18 @@ export default function CallPanel({ agentId = "bank-ava" }: { agentId?: string }
         <div className="flex items-center gap-2">
           <span
             className={`h-3 w-3 rounded-full ${
-              status === "recording"
-                ? "bg-red-500"
-                : status === "thinking" || status === "speaking"
+              status === "live" || status === "muted"
+                ? "bg-green-500"
+                : status === "agentSpeaking"
                   ? "bg-amber-500"
-                  : status === "ready"
-                    ? "bg-green-500"
+                  : status === "connecting"
+                    ? "bg-amber-400"
                     : "bg-zinc-400"
             }`}
           />
           <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
             {call.agentName}
-            {status === "thinking" ? " is thinking…" : ""}
+            {status === "agentSpeaking" ? " is speaking…" : ""}
           </h2>
         </div>
         <span
@@ -56,7 +60,8 @@ export default function CallPanel({ agentId = "bank-ava" }: { agentId?: string }
       </div>
 
       <p className="text-sm text-zinc-500 dark:text-zinc-400" role="status">
-        {STATUS_LABEL[status]}
+        {STATUS_LABEL[status] ?? status}
+        {mode === "ptt" ? " (push-to-talk fallback: hold Space)" : ""}
         {error ? ` — ${error}` : ""}
       </p>
 
@@ -80,23 +85,35 @@ export default function CallPanel({ agentId = "bank-ava" }: { agentId?: string }
           >
             {status === "ended" ? "Call again" : "Start call"}
           </button>
+        ) : live ? (
+          <button
+            onClick={call.toggleMute}
+            aria-pressed={call.muted}
+            aria-label={call.muted ? "Unmute" : "Mute"}
+            className={`flex-1 rounded-lg px-4 py-3 text-sm font-semibold text-white ${
+              call.muted ? "bg-zinc-500 hover:bg-zinc-600" : "bg-red-600 hover:bg-red-500"
+            }`}
+          >
+            {call.muted ? "Unmute (Space)" : "Mute (Space)"}
+          </button>
         ) : (
           <button
             onMouseDown={call.startRecording}
             onMouseUp={call.stopRecording}
             onMouseLeave={call.stopRecording}
-            disabled={status !== "ready" && status !== "recording"}
-            className="flex-1 rounded-lg bg-red-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+            onTouchStart={call.startRecording}
+            onTouchEnd={call.stopRecording}
+            className="flex-1 rounded-lg bg-red-600 px-4 py-3 text-sm font-semibold text-white"
           >
-            {status === "recording" ? "Release to send" : "Hold to talk (Space)"}
+            Hold to talk (Space)
           </button>
         )}
-        {status !== "idle" && status !== "ended" && (
+        {inCall && (
           <button
             onClick={call.end}
             className="rounded-lg border border-zinc-300 px-4 py-2 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
           >
-            Hang up
+            End call
           </button>
         )}
       </div>
