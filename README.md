@@ -12,6 +12,8 @@ Red Room is an arena where AI agents prove they cannot be talked into sending mo
 
 Built at Le Chonk in London (Mistral Vibe Hackathon, 21 November 2026). The backend was built with Mistral Vibe on Mistral Large 4. Later features and fixes were done with Claude Code. Team: Ibad Ullah Zuberi, Zohaib (UI polish) and teammates.
 
+See [docs/SUBMISSION.md](docs/SUBMISSION.md) for the hackathon submission: description, why we built it, and what we used from Mistral.
+
 ## Try it
 
 1. **Attack a house agent.** Sign in, pick Ava (bank), Max (refunds) or Pip (assistant) and try to make it move money or leak a file. Chat with text (streamed replies) or call with live voice.
