@@ -85,14 +85,30 @@ async def test_wrong_signature_rejected():
 
 
 async def test_wrong_azp_rejected():
-    """v4.1 review: the `azp` claim must be in CLERK_AUTHORIZED_PARTIES."""
+    """v4.1 review: a present `azp` claim must be in CLERK_AUTHORIZED_PARTIES."""
     auth = ClerkAuth(PK, fetcher=_fake_fetcher(JWK))
     with pytest.raises(HTTPException) as exc:
         await auth.verify(_token(PRIVATE, azp="https://evil.example"))
     assert exc.value.status_code == 401
-    # and a missing azp is rejected too (Clerk session tokens always carry it)
+
+
+async def test_missing_azp_only_for_instance_session_tokens():
+    """Clerk docs: azp "could be omitted if Origin is empty or null" — server-minted
+    session tokens (Backend API) carry no azp. Accepted only when the token is a
+    session token of THIS instance (sid + iss = instance Frontend API); a no-azp
+    token without those is rejected. General rule, not a smoke-script backdoor."""
+    auth = ClerkAuth(PK, fetcher=_fake_fetcher(JWK))
+    iss = f"https://clerk.redroom.example"
+    # server-minted session token of this instance: no azp, sid + iss -> accepted
+    claims = await auth.verify(_token(PRIVATE, azp=None, iss=iss))
+    assert claims["sub"] == "user_123"
+    # no azp and no sid -> rejected
     with pytest.raises(HTTPException) as exc:
-        await auth.verify(_token(PRIVATE, azp=None))
+        await auth.verify(_token(PRIVATE, azp=None, sid=None, iss=iss))
+    assert exc.value.status_code == 401
+    # no azp and a foreign issuer -> rejected
+    with pytest.raises(HTTPException) as exc:
+        await auth.verify(_token(PRIVATE, azp=None, iss="https://evil.example"))
     assert exc.value.status_code == 401
 
 

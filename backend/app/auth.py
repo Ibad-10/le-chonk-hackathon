@@ -39,7 +39,9 @@ def frontend_api_host(publishable_key: str) -> str:
         raise HTTPException(status_code=500, detail="invalid Clerk publishable key")
     encoded = parts[2].removesuffix("$")
     padded = encoded + "=" * (-len(encoded) % 4)
-    return base64.urlsafe_b64decode(padded).decode("utf-8")
+    # the trailing "$" delimiter may be missing from the stored key, in which
+    # case it ends up inside the base64 payload — strip it from the decoded host
+    return base64.urlsafe_b64decode(padded).decode("utf-8").removesuffix("$")
 
 
 class ClerkAuth:
@@ -93,13 +95,25 @@ class ClerkAuth:
                 token,
                 key,
                 algorithms=["RS256"],
-                options={"require": ["exp", "sub", "azp"]},  # exp checked by default
+                options={"require": ["exp", "sub"]},  # exp checked by default
             )
         except jwt.PyJWTError as exc:
             raise HTTPException(status_code=401, detail=f"invalid session token: {exc}")
-        # v4.1 review: the authorized party must be one we allow
-        if claims.get("azp") not in self._authorized_parties:
-            raise HTTPException(status_code=401, detail="azp not in CLERK_AUTHORIZED_PARTIES")
+        # v4.1 review: a present `azp` (authorized party) must be one we allow.
+        # Clerk docs: azp is the Origin of the original Frontend API request and
+        # "could be omitted if Origin is empty or null" — server-minted session
+        # tokens (Backend API) carry no azp. Those are accepted only when the
+        # token is a session token of THIS instance (sid + iss), never as a
+        # blanket no-azp pass.
+        azp = claims.get("azp")
+        if azp is not None:
+            if azp not in self._authorized_parties:
+                raise HTTPException(status_code=401, detail="azp not in CLERK_AUTHORIZED_PARTIES")
+        elif not claims.get("sid") or claims.get("iss") != f"https://{self._host}":
+            raise HTTPException(
+                status_code=401,
+                detail="token has no azp and is not a session token of this instance",
+            )
         return claims
 
 
