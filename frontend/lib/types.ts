@@ -54,6 +54,8 @@ export interface StartRunResponse {
   run_id: string;
   agent_id: string;
   ends_at: number; // unix seconds
+  role?: DealtRole; // v4.1 dealt role (player only)
+  brief?: RoleBrief | null; // normalised from the backend's raw brief
 }
 
 export interface ToolEvent {

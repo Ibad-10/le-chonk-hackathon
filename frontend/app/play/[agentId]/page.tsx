@@ -148,7 +148,9 @@ function PlayPageInner({ agentId }: { agentId: string }) {
         });
         if (cancelled) return;
         setRunId(run.run_id);
-        getRoleBrief(run.run_id).then((b) => !cancelled && setBrief(b));
+        // the dealt role comes back with the run; the GET route is only a mock fallback
+        if (run.brief) setBrief(run.brief);
+        else getRoleBrief(run.run_id).then((b) => !cancelled && setBrief(b));
       } catch (e) {
         if (!cancelled)
           setError(e instanceof Error ? e.message : "could not start run");

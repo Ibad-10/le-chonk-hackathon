@@ -114,7 +114,7 @@ export async function startRun(
   agentId: string,
   opts: { channel?: "text" | "voice"; mode?: "arena" | "practice"; playerId?: string; token?: Token } = {}
 ): Promise<StartRunResponse> {
-  return request<StartRunResponse>(
+  const res = await request<StartRunResponse>(
     "/runs",
     {
       method: "POST",
@@ -137,6 +137,7 @@ export async function startRun(
       };
     }
   );
+  return { ...res, brief: toRoleBrief(res.brief) };
 }
 
 export async function sendMessage(
@@ -242,6 +243,37 @@ export async function endRun(runId: string, token?: Token): Promise<RunResult> {
       reason: "(mock) run ended",
     })
   );
+}
+
+/**
+ * Backend brief (POST /runs) -> RoleBrief. Backend shapes:
+ * scammer {mission: {title, brief}, dossier: string[]};
+ * genuine {need: string, verification: {dob: ..., postcode: ...}}.
+ */
+export function toRoleBrief(raw: unknown): RoleBrief | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (r.role === "genuine") {
+    const verification = (r.verification ?? {}) as Record<string, unknown>;
+    return {
+      role: "genuine",
+      need: String(r.need ?? ""),
+      details: Object.entries(verification).map(
+        ([k, v]) => `${k.replace(/_/g, " ")}: ${Array.isArray(v) ? v.join(", ") : String(v)}`
+      ),
+    };
+  }
+  if (r.role === "scammer") {
+    const m = r.mission;
+    const mission =
+      typeof m === "string"
+        ? m
+        : m && typeof m === "object"
+          ? [(m as Record<string, unknown>).title, (m as Record<string, unknown>).brief].filter(Boolean).join(": ")
+          : "";
+    return { role: "scammer", mission, dossier: Array.isArray(r.dossier) ? r.dossier.map(String) : [] };
+  }
+  return null;
 }
 
 /** Dealt hidden role + brief for a run (v4.1). Route not built -> mock. */

@@ -18,7 +18,6 @@ import {
   analyseLogbook,
   createDraft,
   getAgent,
-  getLatestRetestReport,
   getLogbook,
   getRetestJob,
   getVersionDiff,
@@ -303,7 +302,6 @@ function OwnerPageInner({ params }: { params: Promise<{ id: string }> }) {
         if (latest)
           setDraft({ instructions: latest.instructions, knowledge: latest.knowledge });
       });
-      getLatestRetestReport(id, token).then(setReport).catch(() => {});
     })();
     return () => {
       cancelled = true;
