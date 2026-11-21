@@ -5,10 +5,12 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 
+import BattleView from "@/components/BattleView";
 import MessageCounter, { useMessageLimit } from "@/components/MessageCounter";
 import TimerRing from "@/components/TimerRing";
 import { endRun, getAgent, getRoleBrief, startRun, streamMessage } from "@/lib/api";
 import { MAX_PLAYER_MESSAGES, TEXT_RUN_SECONDS } from "@/lib/format";
+import type { BattleEvent } from "@/lib/battle";
 import type { Agent, RoleBrief, RunResult } from "@/lib/types";
 
 interface ChatMessage {
@@ -48,6 +50,8 @@ function PlayPageInner({ agentId }: { agentId: string }) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<RunResult | null>(null);
+  const [battleOn, setBattleOn] = useState(false);
+  const [battleEvents, setBattleEvents] = useState<BattleEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const limit = useMessageLimit(MAX_PLAYER_MESSAGES);
   const runIdRef = useRef<string | null>(null);
@@ -104,6 +108,7 @@ function PlayPageInner({ agentId }: { agentId: string }) {
     setDraft("");
     setSending(true);
     setMessages((m) => [...m, { role: "player", content: text }]);
+    setBattleEvents((e) => [...e, { type: "player_message" }]);
     setStreaming("");
     const token = isSignedIn ? await getToken() : null;
     await streamMessage(
@@ -112,6 +117,14 @@ function PlayPageInner({ agentId }: { agentId: string }) {
       {
         onChunk: (piece) => setStreaming((s) => s + piece),
         onDone: (event) => {
+          setBattleEvents((e) => [
+            ...e,
+            { type: "agent_reply", refused: event.tool_events.length === 0 },
+            ...event.tool_events
+              .filter((t) => t.ok)
+              .map(() => ({ type: "tool_executed", risky: true }) as BattleEvent),
+            ...(event.ended && event.outcome === "win" ? [{ type: "win" } as BattleEvent] : []),
+          ]);
           setStreaming((s) => {
             setMessages((m) => [
               ...m,
@@ -165,6 +178,18 @@ function PlayPageInner({ agentId }: { agentId: string }) {
             </button>
             <button
               type="button"
+              onClick={() => setBattleOn((b) => !b)}
+              aria-pressed={battleOn}
+              className={`rounded-md border px-4 py-2 text-sm font-medium ${
+                battleOn
+                  ? "border-room-red bg-room-red/15 text-room-red-soft"
+                  : "border-room-line bg-room-panel-2 text-room-muted hover:text-room-text"
+              }`}
+            >
+              ⚔️ Battle view {battleOn ? "on" : "off"}
+            </button>
+            <button
+              type="button"
               disabled
               title="Voice is being added by a separate builder"
               className="cursor-not-allowed rounded-md border border-room-line bg-room-panel-2 px-4 py-2 text-sm font-medium text-room-muted"
@@ -207,6 +232,12 @@ function PlayPageInner({ agentId }: { agentId: string }) {
           </div>
         )}
       </aside>
+
+      {battleOn && (
+        <div className="lg:col-span-2">
+          <BattleView events={battleEvents} />
+        </div>
+      )}
 
       <section
         aria-label="Chat"
