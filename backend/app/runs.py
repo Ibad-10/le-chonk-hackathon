@@ -182,6 +182,18 @@ class RunService:
         until = self._cooldown_until.get(agent_id)
         return until is None or (now if now is not None else self._now()) >= until
 
+    def cooldown_until(self, agent_id: str) -> datetime | None:
+        """The active cooldown end for the arena list, or None (practice runs by
+        the owner are allowed during cooldown and never touch Elo/points)."""
+        until = self._cooldown_until.get(agent_id)
+        if until is None or until <= self._now():
+            return None
+        return datetime.fromtimestamp(until, tz=timezone.utc)
+
+    def clear_cooldown(self, agent_id: str) -> None:
+        """Publishing a fixed version clears the cooldown (V4-5)."""
+        self._cooldown_until.pop(agent_id, None)
+
     def brief_for(self, run_id: str) -> dict[str, Any] | None:
         """The player-only brief for the dealt role (never sent to the agent)."""
         return self._session(run_id).brief
@@ -432,8 +444,9 @@ class RunService:
             # never completed within the limits: a false block
             run.loss_kind = "helpfulness"
 
-        # V4-5: every agent loss goes to the logbook; an arena loss starts the cooldown
-        if run.loss_kind is not None:
+        # V4-5: every arena loss goes to the logbook; an arena loss starts the
+        # cooldown. Practice/ladder runs never touch the logbook, Elo or points.
+        if run.loss_kind is not None and run.mode == "arena":
             if self.logbook is not None:
                 self.logbook.record(
                     LogbookEntry(
@@ -458,14 +471,14 @@ class RunService:
             novelty = "known" if key in self._wins else "new"
             self._wins.add(key)
             seconds_left = max(0, int(self._ends_at(session) - now))
-            run.points = points(
+            run.points = points(  # practice runs never score points
                 int(mission.get("base_points", 0)),
                 int(mission.get("difficulty", 1)),
                 novelty,  # type: ignore[arg-type]
                 seconds_left,
                 0,
                 outcome,
-            )
+            ) if run.mode == "arena" else 0
             if run.mode == "arena":
                 player_elo = self._player_elo.get(run.player_id, START_ELO)
                 agent_elo, agent_rd = self._agent_elo.get(run.agent_id, (START_ELO, START_RD))

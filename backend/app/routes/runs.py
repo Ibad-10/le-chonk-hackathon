@@ -9,11 +9,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from app.auth import current_player
+from app.auth import current_player, is_agent_owner
 from app.config import settings
-from app.db import Player
+from app.db import Agent, Player
 from app.models import RunChannel, RunMode
 from app.runs import AgentInCooldown, NoLivesAvailable, RunNotFound, RunService
+from sqlmodel import Session
 
 router = APIRouter()
 
@@ -38,6 +39,15 @@ def get_service(request: Request) -> RunService:
 @router.post("/runs")
 async def start_run(req: StartRunRequest, request: Request, player: Player = Depends(current_player)):
     service = get_service(request)
+    if req.mode == "practice":
+        # owner practice runs: allowed on any of the owner's agents even in
+        # cooldown; never change Elo or points (RunService gates on arena)
+        with Session(request.app.state.db_engine) as session:
+            agent = session.get(Agent, req.agent_id)
+        if agent is None:
+            raise HTTPException(status_code=404, detail="agent not found")
+        if not is_agent_owner(agent, player):
+            raise HTTPException(status_code=403, detail="practice runs are owner-only")
     try:
         run = service.start_run(
             agent_id=req.agent_id,

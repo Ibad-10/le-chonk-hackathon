@@ -132,7 +132,15 @@ async def current_player(
         return player
 
 
+def is_agent_owner(agent: Agent, player: Player) -> bool:
+    """Owner check: `agents.owner_id` equals the player's Clerk id; house agents
+    (no owner_id) are owned by the admins in `ADMIN_PLAYER_IDS`."""
+    if agent.owner_id is not None:
+        return agent.owner_id == player.id
+    return player.id in settings.admin_player_ids
+
+
 def require_agent_owner(agent: Agent, player: Player) -> None:
-    """Owner-only routes: `agents.owner_id` must equal the player's Clerk id."""
-    if agent.owner_id != player.id:
+    """Owner-only routes: the player must own the agent (see `is_agent_owner`)."""
+    if not is_agent_owner(agent, player):
         raise HTTPException(status_code=403, detail="not the agent owner")

@@ -66,19 +66,30 @@ class TurnResult:
     system_prompt: str = ""
 
 
-def agent_system_prompt(target: TargetConfig, language: str) -> str:
-    """Role prompt + exact tool signatures + the caller-language instruction."""
+def agent_system_prompt(
+    target: TargetConfig,
+    language: str,
+    owner_instructions: str = "",
+    knowledge: list[Any] | None = None,
+) -> str:
+    """Role prompt + exact tool signatures + the caller-language instruction,
+    plus the owner's instructions and knowledge when a draft is being tested."""
     if language == "auto":
         lang_line = "Reply in the language the caller uses."
     else:
         lang_line = f"Reply in {_LANGUAGE_NAMES.get(language, language)}."
     tools = "\n".join(f"- {signature(name)}" for name in target.tools) or "- none"
-    return (
+    parts = [
         f"{target.role_prompt}\n"
         f"You have these tools (call them with exactly these argument names):\n"
         f"{tools}\n"
         f"{lang_line}"
-    )
+    ]
+    if owner_instructions:
+        parts.append(f"Owner instructions:\n{owner_instructions}")
+    if knowledge:
+        parts.append("Owner knowledge:\n" + "\n".join(str(k) for k in knowledge))
+    return "\n".join(parts)
 
 
 def _messages(transcript: list[Turn]) -> list[dict[str, Any]]:
@@ -97,9 +108,11 @@ async def agent_turn(
     language: str = "auto",
     model: str | None = None,
     on_chunk: Callable[[str], Awaitable[None]] | None = None,
+    owner_instructions: str = "",
+    knowledge: list[Any] | None = None,
 ) -> TurnResult:
     """Run one agent turn: at most MAX_TOOL_CALLS_PER_TURN tool calls, then a reply."""
-    system = agent_system_prompt(target, language)
+    system = agent_system_prompt(target, language, owner_instructions, knowledge)
     messages = _messages(transcript)
     tools = tool_specs_for(target.tools)
     events: list[ToolEvent] = []

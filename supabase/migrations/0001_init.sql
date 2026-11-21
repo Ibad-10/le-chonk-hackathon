@@ -39,6 +39,8 @@ create table if not exists public.agent_versions (
   agent_id text not null references public.agents(id) on delete cascade,
   version int not null,
   status text not null default 'published' check (status in ('draft','published')), -- v3
+  instructions text not null default '',       -- v4: owner instructions of this version
+  knowledge jsonb not null default '[]'::jsonb, -- v4: owner knowledge of this version
   rulebook_rule_ids jsonb not null default '[]'::jsonb,
   examples jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now(),
@@ -57,7 +59,7 @@ create table if not exists public.runs (
   agent_id text not null references public.agents(id),
   agent_version int not null,
   channel text not null default 'text' check (channel in ('text','voice')),
-  mode text not null check (mode in ('ladder','arena','genuine','ai_scammer','exam')),
+  mode text not null check (mode in ('ladder','arena','genuine','ai_scammer','exam','practice')),
   mission_id text,
   wave int,
   language text not null default 'auto',
@@ -110,6 +112,17 @@ create table if not exists public.logbook_entries (
   signals jsonb not null default '[]'::jsonb,
   how_close int not null default 0,
   open boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+-- agent_drafts (v4: owner draft instructions + knowledge, retested before publish) --
+create table if not exists public.agent_drafts (
+  id uuid primary key default gen_random_uuid(),
+  agent_id text not null references public.agents(id) on delete cascade,
+  version int not null,                        -- draft number d per agent
+  instructions text not null default '',       -- max 2000 chars, enforced by the API
+  knowledge jsonb not null default '[]'::jsonb,
+  status text not null default 'draft' check (status in ('draft','published')),
   created_at timestamptz not null default now()
 );
 

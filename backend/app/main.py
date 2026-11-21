@@ -14,8 +14,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth import ClerkAuth
 from app.db import init_db, make_engine, seed_house_agents
+from app.improvement import RetestService
 from app.llm import MistralLLM
 from app.repo import SQLiteLogbookRepo, SQLiteRunsRepo
+from app.routes.agents import router as agents_router
+from app.routes.owner import router as owner_router
 from app.routes.runs import router as runs_router
 from app.runs import RunService
 
@@ -27,9 +30,11 @@ async def lifespan(app: FastAPI):
     seed_house_agents(engine)
     app.state.db_engine = engine
     app.state.clerk_auth = ClerkAuth()
+    llm = MistralLLM()
     app.state.run_service = RunService(
-        MistralLLM(), repo=SQLiteRunsRepo(engine), logbook=SQLiteLogbookRepo(engine)
+        llm, repo=SQLiteRunsRepo(engine), logbook=SQLiteLogbookRepo(engine)
     )
+    app.state.retest_service = RetestService(llm, engine, app.state.run_service)
     yield
 
 
@@ -44,6 +49,8 @@ app.add_middleware(
 )
 
 app.include_router(runs_router)
+app.include_router(agents_router)
+app.include_router(owner_router)
 
 
 @app.get("/health")

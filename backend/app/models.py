@@ -40,7 +40,7 @@ class DetectedLanguage(BaseModel):
 # --- Runs ------------------------------------------------------------------
 
 RunOutcome = Literal["win", "timeout", "abandoned", "error", "no_contest"]
-RunMode = Literal["ladder", "arena", "genuine", "ai_scammer", "exam"]
+RunMode = Literal["ladder", "arena", "genuine", "ai_scammer", "exam", "practice"]
 RunChannel = Literal["text", "voice"]
 
 

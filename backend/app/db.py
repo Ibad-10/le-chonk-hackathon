@@ -69,6 +69,8 @@ class AgentVersion(SQLModel, table=True):
     agent_id: str = Field(primary_key=True, foreign_key="agents.id")
     version: int = Field(primary_key=True)
     status: str = "published"
+    instructions: str = ""  # v4: owner instructions of this version (diffable)
+    knowledge: list[Any] = Field(default_factory=list, sa_column=Column(JSON))  # v4: owner knowledge
     rulebook_rule_ids: list[Any] = Field(default_factory=list, sa_column=Column(JSON))
     examples: list[Any] = Field(default_factory=list, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=_now)
@@ -114,11 +116,27 @@ class LogbookEntry(SQLModel, table=True):
     outcome: str
     stopped_by: str | None = None
     family: str | None = None  # tactic family, filled by the analyst
+    root_cause: str | None = None  # v4: analyst group this entry belongs to
     language: str | None = None  # v4.1: caller language of the run
     loss_kind: str | None = None  # "security" | "helpfulness"
     signals: list[Any] = Field(default_factory=list, sa_column=Column(JSON))
     how_close: int = 0
     open: bool = True
+    created_at: datetime = Field(default_factory=_now)
+
+
+class AgentDraft(SQLModel, table=True):
+    """Owner draft (v4): a candidate instructions + knowledge pair, retested
+    before it can be published as a new agent version."""
+
+    __tablename__ = "agent_drafts"
+
+    id: str = Field(primary_key=True)
+    agent_id: str = Field(foreign_key="agents.id")
+    version: int  # draft number d (per agent)
+    instructions: str = ""
+    knowledge: list[Any] = Field(default_factory=list, sa_column=Column(JSON))
+    status: str = "draft"  # draft | published
     created_at: datetime = Field(default_factory=_now)
 
 
