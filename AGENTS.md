@@ -9,6 +9,7 @@ A game where players scam AI agents that can take actions (move money, leak file
 ## Read before coding (in this order)
 
 Current source of truth (v4, overrides everything else):
+0. `docs/TEAM_HANDOVER.md` (team handover notes).
 1. `docs/superpowers/specs/2026-11-21-red-room-v4.md` (v4 design; overrides earlier specs wherever they conflict).
 2. `docs/superpowers/specs/2026-11-21-red-room-v41.md` (v4.1 additions; v4.1 wins where it conflicts).
 3. `docs/superpowers/plans/2026-11-21-red-room-v4.md` (v4 task list; work one task at a time, in order, unless told otherwise).
