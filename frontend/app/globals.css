@@ -1,26 +1,68 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* Red Room theme: deep near-black with a subtle red glow + grain, one accent
+   red, crisp white text. WCAG AA contrast on all text/background pairs. */
+
+@theme {
+  --color-room-bg: #0a0507;
+  --color-room-panel: #140a0d;
+  --color-room-panel-2: #1d1013;
+  --color-room-line: #3a1d24;
+  --color-room-red: #e5202b;
+  --color-room-red-soft: #ff5a63;
+  --color-room-text: #f5eef0;
+  --color-room-muted: #c9a7ad;
+  --font-display: var(--font-archivo-black), "Arial Black", sans-serif;
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), monospace;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-room-bg);
+  color: var(--color-room-text);
+  font-family: var(--font-sans);
+  /* subtle red glow from the top + grain overlay */
+  background-image:
+    radial-gradient(1200px 500px at 50% -10%, rgba(229, 32, 43, 0.16), transparent 60%),
+    radial-gradient(900px 420px at 85% 110%, rgba(229, 32, 43, 0.08), transparent 60%);
+  background-attachment: fixed;
+}
+
+/* film grain */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+::selection {
+  background: var(--color-room-red);
+  color: #fff;
+}
+
+/* visible focus rings everywhere (keyboard usable) */
+:focus-visible {
+  outline: 3px solid var(--color-room-red-soft);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
