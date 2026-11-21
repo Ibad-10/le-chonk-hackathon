@@ -1,0 +1,17 @@
+# Secrets — never bake into the image (pass via --env-file / -e at runtime)
+.env
+.env.*
+*.env.txt
+
+# Local databases and caches
+*.db
+*.db-journal
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Tests and local tooling are not needed in the runtime image
+tests/
+.impeccable/
