@@ -1,5 +1,7 @@
 # Red Room: how it all works (plain English)
 
+Superseded in part by docs/superpowers/specs/2026-11-21-red-room-v4.md (no Guardian, analyst explains but doesn't fix, cooldown, Stripe instead of blockchain).
+
 ## The idea in one paragraph
 
 Red Room is a game where people try to trick AI agents into doing something they shouldn't: sending money to a scammer, leaking a private file, giving a refund nobody is owed. Anyone can build an agent (a banking assistant, a support bot, a personal assistant), and the crowd attacks it by voice or text. Every trick that works lands in the agent owner's logbook. Mistral's Large 4 groups those failures into plain reasons ("it trusts anyone who says they're from the bank") and suggests fixes. The owner fixes their agent, replays every past failure three times to prove the fix holds, and publishes a new version. A knowledge graph shows exactly when and how the agent learned, and an Elo rating, like in chess, shows how hard it is to break. Companies and banks can then take a hardened agent, or just its safety layer, and run it on their own systems.

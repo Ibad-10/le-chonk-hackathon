@@ -1,5 +1,7 @@
 # Red Room: how agents improve (proposal v3)
 
+Superseded in part by docs/superpowers/specs/2026-11-21-red-room-v4.md (no Guardian, analyst explains but doesn't fix, cooldown, Stripe instead of blockchain).
+
 Written 21 Nov 2026, about 10:40, after Ibad's change of direction. Docs only.
 
 ## 1. The change

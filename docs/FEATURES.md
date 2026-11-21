@@ -4,6 +4,57 @@ Mistral "Le Chonk in London" Vibe Hackathon, Sat 21 Nov 2026. Written about 01:0
 
 This builds on `MISTRAL_HANDOVER.md`. The idea is decided (Red Room). Nothing from the handover is cut here. New items are marked NEW; items from the handover are marked H with their handover number.
 
+## v4 ranking (current, overrides everything below)
+
+From `docs/superpowers/specs/2026-11-21-red-room-v4.md` section 6; plan tasks from `docs/superpowers/plans/2026-11-21-red-room-v4.md`.
+
+### MUST (working by 15:30)
+
+| ID | Feature | Why it matters | Plan task |
+|---|---|---|---|
+| V4-M1 | Live text chat with an agent (streaming), multi-turn, with limits | Core arena channel; works where voice or Wi-Fi fails | V4-2 |
+| V4-M2 | Live voice call with Ava (Voxtral in and out), with limits | The theatrical demo moment and the voice-prize angle | V4-10 |
+| V4-M3 | Language auto-detect; agent replies in the caller's language | Scammers target non-native speakers; strong demo moment | V4-2 |
+| V4-M4 | Three streams' sandbox tools; win detection by code (no AI opinion) | Every agent in a stream faces the same test | V4-4 |
+| V4-M5 | Logbook with root-cause grouping (analyst explains, no fixes) | Turns every loss into owner-usable evidence | V4-5 |
+| V4-M6 | Owner draft editor (2,000-char instructions + knowledge) | Writing a tight prompt is a skill; the owner's second game | V4-8 |
+| V4-M7 | Retest loop (3x replay + paraphrased variants + genuine cases); fixed failures saved | Proves a fix generalises instead of memorising one attack | V4-6 |
+| V4-M8 | Publish new version; Elo carry-over; cooldown after a loss | Ratings never reset; cooldown stops the same hole being hit again and again | V4-5, V4-6 |
+| V4-M9 | Visual owner-only knowledge graph with learned nodes | Shows what each agent learned and when; private so top agents can't be copied | V4-9 |
+| V4-M10 | Arena page and leaderboards (players, agents), guest sign-in | Room play needs zero-friction join | V4-7 |
+| V4-M11 | Demo video by 17:30 | Required by the event rules | V4-11 |
+
+### SHOULD
+
+| ID | Feature | Why it matters | Plan task |
+|---|---|---|---|
+| V4-S1 | Create-agent wizard (stream pick, instructions, knowledge) | Makes "any agent" real for creators | V4-17 |
+| V4-S2 | Placement test and A-F grade | Anchors ratings; an agent that blocks everyone can't score an A | V4-12 |
+| V4-S3 | Research agent for house agents (Mistral Agent with web search, scheduled) | Keeps house agents hard; benchmark tracks real-world scams | V4-13 |
+| V4-S4 | Analyse, owner edits, retest as a Mistral Workflow with the Studio timeline | Bonus track (Agents/Workflows) | V4-15 |
+| V4-S5 | Red Room MCP server so Vibe can attack an agent and read its logbook | Track 1 MCP demo from inside Vibe | V4-14 |
+| V4-S6 | Badges, ranks, daily scam challenge | Retention and spectacle | V4-16 |
+
+### NICE
+
+| ID | Feature | Why it matters | Plan task |
+|---|---|---|---|
+| V4-N1 | Agent-vs-agent duels voiced on the projector | Spectacle between pitches | — |
+| V4-N2 | Company private arenas | The enterprise story | — |
+| V4-N3 | Export package (instructions, knowledge, regression tests, report) | The deliverable an owner takes home | — |
+| V4-N4 | Stripe test-mode bounty for First Blood on house agents | Real-money feel without wallets; replaces testnet bounties | NICE (needs Stripe test keys) |
+| V4-N5 | Generalisation score on the agent page | Rewards cause-level fixes over banned-word lists | V4-6 |
+| V4-N6 | House-agent training cycles with automatic rollback | House agents keep getting harder, with an honest log | V4-13 |
+
+Everything below is the earlier brainstorm, kept for reference; where it conflicts with v4, v4 wins.
+
+Removed or changed in v4:
+- Guardian (all L1, M7, CR7 and Guardian mentions)
+- analyst fix suggestions (CR2 fix part, CR3 one-click accept)
+- blockchain bounties (C1-C8, replaced by Stripe test-mode First Blood)
+- public knowledge graphs (V3 public view, K2 public)
+- hourly waves
+
 Tiers:
 - MUST: core loop, working and demoable by about 15:00.
 - SHOULD: build once the core loop works.
@@ -257,7 +308,7 @@ A pitch slide should list every Mistral model and tool we use, with one line on 
 | B5 | Evidence slide with sources (Starling, NatWest, Lloyds, UK Finance £576m, OWASP) | MUST | D | S | Handover §4 |
 | B6 | Backup demo video at 17:00 | MUST | D | S | Handover §12 |
 
-### 3.8 Rewards and smart contract (C)
+### 3.8 Rewards and smart contract (C) (removed in v4)
 
 The reward is real money moving on-chain (testnet), mirroring the fake money the player stole. Steal £5,000 from Ava and 5,000 CHONK test tokens move from the vault to your wallet, live on screen. Using our own ERC-20 test token means we can't run out the way we would with faucet ETH; only the owner wallet needs a little test ETH for gas.
 
