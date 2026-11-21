@@ -4,14 +4,18 @@ import { Suspense, use, useCallback, useEffect, useMemo, useRef, useState } from
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
-import { ChevronDown, Flag, MessageSquare, Phone, ScrollText, Send } from "lucide-react";
+import { motion } from "motion/react";
+import { toast } from "sonner";
 
 import Siege from "@/components/Siege";
-import { BreachMeter, MessagePips, RaidResult, breachPercent } from "@/components/raid";
-import CallPanel from "@/components/voice/CallPanel";
+import { RaidResult, breachPercent } from "@/components/raid";
 import { usePrefersReducedMotion } from "@/components/base/usePrefersReducedMotion";
 import { useMessageLimit } from "@/components/MessageCounter";
-import TimerRing from "@/components/TimerRing";
+import CommsPanel, { type Channel } from "@/components/play/CommsPanel";
+import CommsSheet from "@/components/play/CommsSheet";
+import HudBar from "@/components/play/HudBar";
+import type { ChatMessage } from "@/components/play/ChatPanel";
+import { Toaster } from "@/components/ui/sonner";
 import { endRun, getAgent, getRoleBrief, startRun, streamMessage } from "@/lib/api";
 
 import {
@@ -47,9 +51,17 @@ function webglAvailable(): boolean {
   }
 }
 
-interface ChatMessage {
-  role: "player" | "agent";
-  content: string;
+/** true at the lg breakpoint (desktop side panel); false on phones (Sheet). */
+function useIsDesktop(): boolean {
+  const [desktop, setDesktop] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const on = () => setDesktop(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return desktop;
 }
 
 function outcomeLabel(result: RunResult): string {
@@ -87,8 +99,13 @@ function PlayPageInner({ agentId }: { agentId: string }) {
   // Base (3D) is the default view; Siege is the lightweight view and the
   // automatic fallback when WebGL is unavailable or reduced motion is set.
   const [view, setView] = useState<PlayView>("base");
-  const [channel, setChannel] = useState<"chat" | "call">("chat");
+  const [channel, setChannel] = useState<Channel>("chat");
   const reducedMotion = usePrefersReducedMotion();
+  const isDesktop = useIsDesktop();
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [unread, setUnread] = useState(0);
+  const sheetOpenRef = useRef(false);
+  sheetOpenRef.current = sheetOpen;
   const [baseEvents, setBaseEvents] = useState<BaseEvent[]>([]);
   const [siegeEvents, setSiegeEvents] = useState<SiegeEvent[]>([]);
   const [secondsLeft, setSecondsLeft] = useState(TEXT_RUN_SECONDS);
@@ -107,6 +124,11 @@ function PlayPageInner({ agentId }: { agentId: string }) {
     () => (result ? endBanner(baseEvents, { role: brief?.role, outcome: result.outcome }) : null),
     [result, baseEvents, brief]
   );
+
+  // run errors surface as a toast (sonner announces it politely)
+  useEffect(() => {
+    if (error) toast.error(error);
+  }, [error]);
 
   // playing requires sign-in
   useEffect(() => {
@@ -238,7 +260,8 @@ function PlayPageInner({ agentId }: { agentId: string }) {
           ]);
           // append outside the state updater: updaters run twice in dev (StrictMode)
           const reply = event.reply ?? streamedRef.current;
-          setMessages((m) => [...m, { role: "agent", content: reply }]);
+          setMessages((m) => [...m, { role: "agent", content: reply, at: Date.now() }]);
+          if (!sheetOpenRef.current) setUnread((n) => n + 1);
           setStreaming("");
           setSending(false);
           if (event.ended) void finish();
@@ -264,7 +287,7 @@ function PlayPageInner({ agentId }: { agentId: string }) {
     if (!limit.trySend()) return; // 21st message is blocked by the counter
     setDraft("");
     lastTextRef.current = text;
-    setMessages((m) => [...m, { role: "player", content: text }]);
+    setMessages((m) => [...m, { role: "player", content: text, at: Date.now() }]);
     // live base: a troop squad spawns immediately and marches at its target
     setBaseEvents((e) => [
       ...e,
@@ -286,211 +309,104 @@ function PlayPageInner({ agentId }: { agentId: string }) {
   }
 
   const breach = breachPercent(baseEvents);
-  const missionTitle = brief?.role === "genuine" ? "Your brief" : "Your mission";
+  const agentName = agent?.name ?? agentId;
+  const ended = !!result;
+
+  const comms = (
+    <CommsPanel
+      agentId={agentId}
+      agentName={agent?.name ?? "the agent"}
+      brief={brief}
+      channel={channel}
+      onChannel={setChannel}
+      getToken={isSignedIn ? getToken : undefined}
+      messages={messages}
+      streaming={streaming}
+      sending={sending}
+      disabled={ended || !limit.canSend}
+      disabledReason={ended ? "Run ended" : "Message limit reached"}
+      connLost={connLost}
+      onRetry={() => void retry()}
+      draft={draft}
+      onDraft={setDraft}
+      onSend={() => void send()}
+    />
+  );
 
   return (
     <div className="relative flex h-[calc(100dvh-4rem)] w-full flex-col overflow-hidden bg-room-bg">
-      {/* HUD bar: in flow above the scene, so the breach counter never covers the canvas */}
-      <header className="z-20 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-room-line bg-room-panel/95 p-2 sm:px-4">
-        <div className="flex items-center gap-3 sm:gap-4">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-room-muted">
-              {practice ? "Practice raid" : "Raiding"}
-            </p>
-            <h1 className="font-display text-xl leading-none text-room-text sm:text-3xl">
-              {agent?.name ?? agentId}
-            </h1>
-            <p className="mt-1 hidden font-mono text-xs text-room-muted sm:block">
-              {agent?.stream ?? "…"} · v{agent?.current_version ?? "?"} · {agent ? Math.round(agent.rating) : "—"} Elo
-            </p>
-          </div>
-          <TimerRing
-            seconds={TEXT_RUN_SECONDS}
-            endsAt={runEndsAt ?? undefined}
-            paused={runEndsAt === null}
-            onExpire={() => void finish()}
-          />
-        </div>
-        <div className="flex items-center gap-3 sm:gap-5">
-          <BreachMeter events={baseEvents} />
-          <div className="hidden sm:block">
-            <MessagePips used={limit.count} max={limit.max} />
-          </div>
-          <button
-            type="button"
-            onClick={() => void finish()}
-            disabled={!!result}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-danger/60 px-3 py-2 text-sm font-semibold text-danger-soft hover:bg-danger-bg disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Flag size={16} aria-hidden="true" /> End raid
-          </button>
-        </div>
-      </header>
+      <HudBar
+        practice={practice}
+        agentName={agentName}
+        rating={agent ? agent.rating : null}
+        stream={agent?.stream}
+        version={agent?.current_version}
+        seconds={TEXT_RUN_SECONDS}
+        endsAt={runEndsAt}
+        onExpire={() => void finish()}
+        events={baseEvents}
+        used={limit.count}
+        max={limit.max}
+        ended={ended}
+        onEnd={() => void finish()}
+      />
       <div className="relative min-h-0 flex-1">
-      {/* the stage: 3D village, or the 2D Siege when WebGL / motion is unavailable */}
-      <div className="absolute inset-x-0 bottom-[44%] top-0 lg:bottom-0 lg:right-[410px]">
-        {view === "base" ? (
-          <LiveBase
-            agentId={agentId}
-            stream={agent?.stream ?? "banking"}
-            events={baseEvents}
-            height="100%"
-          />
-        ) : (
-          <div className="h-full overflow-auto px-3 pb-4 pt-3">
-            <Siege
-              events={siegeEvents}
-              messagesRemaining={limit.remaining}
-              maxMessages={limit.max}
-              secondsLeft={secondsLeft}
+        {/* the stage: 3D village, or the 2D Siege when WebGL / motion is unavailable */}
+        <div className="absolute inset-0 lg:right-[424px]">
+          {view === "base" ? (
+            <LiveBase
+              agentId={agentId}
+              stream={agent?.stream ?? "banking"}
+              events={baseEvents}
+              height="100%"
             />
-          </div>
-        )}
-      </div>
-
-      {/* comms: chat or voice call; right column on desktop, bottom sheet on phones */}
-      <section
-        aria-label="Comms"
-        className="absolute inset-x-2 bottom-2 z-20 flex max-h-[46%] flex-col overflow-hidden rounded-xl border border-room-line bg-room-panel/95 shadow-2xl backdrop-blur lg:inset-x-auto lg:bottom-4 lg:right-4 lg:top-4 lg:max-h-none lg:w-[390px]"
-      >
-        {brief && (
-          <details open={messages.length === 0} className="group border-b border-room-line">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-2.5">
-              <span className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-room-red-soft">
-                <ScrollText size={14} aria-hidden="true" /> {missionTitle}
-              </span>
-              <ChevronDown size={16} aria-hidden="true" className="text-room-muted transition-transform group-open:rotate-180" />
-            </summary>
-            <div className="max-h-48 space-y-2 overflow-y-auto px-4 pb-3 text-sm text-room-text">
-              <p>{brief.role === "scammer" ? brief.mission : brief.need}</p>
-              <p className="text-[11px] uppercase tracking-wider text-room-muted">
-                {brief.role === "scammer" ? "Public dossier" : "Your details (for verification)"}
-              </p>
-              <ul className="list-disc space-y-0.5 pl-4 text-room-muted">
-                {(brief.role === "scammer" ? brief.dossier : brief.details).map((d) => (
-                  <li key={d}>{d}</li>
-                ))}
-              </ul>
+          ) : (
+            <div className="h-full overflow-auto px-2 pb-16 pt-2 lg:pb-4">
+              <Siege
+                events={siegeEvents}
+                messagesRemaining={limit.remaining}
+                maxMessages={limit.max}
+                secondsLeft={secondsLeft}
+              />
             </div>
-          </details>
-        )}
-
-        <div className="flex gap-1 border-b border-room-line p-1.5" role="tablist" aria-label="Channel">
-          {(["chat", "call"] as const).map((c) => (
-            <button
-              key={c}
-              type="button"
-              role="tab"
-              aria-selected={channel === c}
-              onClick={() => setChannel(c)}
-              className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold ${
-                channel === c ? "bg-room-panel-2 text-room-text" : "text-room-muted hover:text-room-text"
-              }`}
-            >
-              {c === "chat" ? <MessageSquare size={15} aria-hidden="true" /> : <Phone size={15} aria-hidden="true" />}
-              {c === "chat" ? "Chat" : "Call"}
-            </button>
-          ))}
+          )}
         </div>
 
-        {channel === "call" ? (
-          <div className="overflow-y-auto p-3 [&>div]:max-w-none">
-            <CallPanel
-              agentId={agentId}
-              agentName={agent?.name ?? "the agent"}
-              getToken={isSignedIn ? getToken : undefined}
-            />
-          </div>
+        {/* comms: right-hand panel on desktop, bottom Sheet on phones */}
+        {isDesktop ? (
+          <motion.section
+            aria-label="Comms"
+            initial={reducedMotion ? false : { opacity: 0, x: 24 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: reducedMotion ? 0 : 0.25, ease: "easeOut" }}
+            className="absolute bottom-4 right-4 top-4 z-20 flex w-[392px] flex-col overflow-hidden rounded-xl border border-room-line bg-room-panel/95 shadow-2xl backdrop-blur"
+          >
+            {comms}
+          </motion.section>
         ) : (
-          <>
-            <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto p-4">
-              {connLost && (
-                <div role="alert" className="flex items-center justify-between gap-2 rounded-lg bg-danger-bg px-3 py-2 text-sm text-danger-soft">
-                  <span>Connection to the agent lost.</span>
-                  <button
-                    type="button"
-                    onClick={() => void retry()}
-                    disabled={sending}
-                    className="rounded-md border border-danger/60 px-2.5 py-1 font-semibold hover:bg-danger/20 disabled:opacity-50"
-                  >
-                    Retry
-                  </button>
-                </div>
-              )}
-              {messages.length === 0 && !streaming && (
-                <p className="text-sm text-room-muted">
-                  Every message sends a troop at the base. Talk {agent?.name ?? "the agent"} into it.
-                </p>
-              )}
-              {messages.map((m, i) => (
-                <div
-                  key={i}
-                  className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${
-                    m.role === "player"
-                      ? "ml-auto rounded-br-sm bg-room-red text-room-bg"
-                      : "mr-auto rounded-bl-sm bg-room-panel-2 text-room-text"
-                  }`}
-                >
-                  {m.content}
-                </div>
-              ))}
-              {/* ARIA live region for the streamed agent reply */}
-              <div aria-live="polite" className="min-h-6">
-                {streaming && (
-                  <div className="mr-auto max-w-[85%] rounded-xl rounded-bl-sm bg-room-panel-2 px-3 py-2 text-sm text-room-text">
-                    {streaming}
-                    <span aria-hidden="true" className="animate-pulse">|</span>
-                  </div>
-                )}
-              </div>
-            </div>
-            <form
-              className="flex gap-2 border-t border-room-line p-2.5"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void send();
-              }}
-            >
-              <label htmlFor="chat-input" className="sr-only">
-                Message
-              </label>
-              <input
-                id="chat-input"
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                disabled={sending || !!result || !limit.canSend}
-                placeholder={limit.canSend ? "Talk them into it…" : "Message limit reached"}
-                className="min-w-0 flex-1 rounded-lg border border-room-line bg-room-bg px-3 py-2.5 text-sm text-room-text placeholder:text-room-muted focus:border-room-red/70"
-              />
-              <button
-                type="submit"
-                aria-label="Send troop"
-                disabled={sending || !draft.trim() || !!result || !limit.canSend}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-room-red px-4 py-2.5 text-sm font-bold text-room-bg hover:bg-room-red-soft disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Send size={16} aria-hidden="true" />
-                <span className="hidden sm:inline">Send</span>
-              </button>
-            </form>
-          </>
+          <CommsSheet
+            open={sheetOpen}
+            onOpenChange={(o) => {
+              setSheetOpen(o);
+              if (o) setUnread(0);
+            }}
+            unread={unread}
+          >
+            {comms}
+          </CommsSheet>
         )}
-      </section>
 
-      {result && (
-        <RaidResult
-          banner={baseBanner}
-          result={result}
-          breach={breach}
-          detail={outcomeLabel(result)}
-          onPlayAgain={() => window.location.reload()}
-        />
-      )}
-      {error && (
-        <p role="alert" className="absolute bottom-3 left-3 z-30 rounded-lg bg-danger-bg px-3 py-2 text-sm text-danger-soft">
-          {error}
-        </p>
-      )}
+        {result && (
+          <RaidResult
+            banner={baseBanner}
+            result={result}
+            breach={breach}
+            detail={outcomeLabel(result)}
+            onPlayAgain={() => window.location.reload()}
+          />
+        )}
       </div>
+      <Toaster />
     </div>
   );
 }

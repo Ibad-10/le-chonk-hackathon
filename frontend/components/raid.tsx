@@ -8,6 +8,7 @@ import { starsForEvents, type BaseEvent, type EndBanner } from "@/lib/base";
 import type { RunResult } from "@/lib/types";
 
 import { usePrefersReducedMotion } from "./base/usePrefersReducedMotion";
+import { Progress } from "@/components/ui/progress";
 import Stars from "./Stars";
 
 /**
@@ -46,19 +47,17 @@ export function BreachMeter({ events }: { events: BaseEvent[] }) {
   const pct = breachPercent(events);
   const shown = useCountUp(pct, 600);
   return (
-    <div className="min-w-[150px]" aria-label={`Breach ${pct} percent`}>
+    <div className="min-w-[160px]">
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-room-muted">Breach</span>
         <span className="font-mono text-lg font-bold tabular-nums text-room-text">{shown}%</span>
       </div>
-      <div className="mt-1 h-2 overflow-hidden rounded-full bg-room-panel-2">
-        <div
-          className={`h-full rounded-full transition-[width] duration-500 ease-out ${
-            pct >= 100 ? "bg-danger" : "bg-room-red"
-          }`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
+      <Progress
+        value={pct}
+        aria-label={`Breach ${pct} percent`}
+        className="mt-1 h-2 bg-room-panel-2"
+        indicatorClassName={`duration-500 ease-out ${pct >= 100 ? "bg-danger" : "bg-room-red"}`}
+      />
     </div>
   );
 }
