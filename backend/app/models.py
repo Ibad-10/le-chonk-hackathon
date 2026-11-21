@@ -87,6 +87,7 @@ class TargetConfig(BaseModel):
     id: str
     name: str
     domain: str
+    stream: str = ""  # v3: "banking" | "support" | "assistant"
     voice: str = ""
     role_prompt: str
     tools: list[str] = Field(default_factory=list)
@@ -97,3 +98,4 @@ class TargetConfig(BaseModel):
     visibility: Literal["public", "private"] = "public"
     owner: str = "house"
     guardian_mode: GuardianMode = "live"
+    guardian_enabled: bool = False  # v3: off by default on creator agents, on for house agents
