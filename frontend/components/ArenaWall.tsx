@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import { ShieldAlert, ShieldCheck } from "lucide-react";
 
 import {
   getAgentLeaderboard,
@@ -114,9 +115,11 @@ export default function ArenaWall() {
                 key={ev.id}
                 className="flex items-baseline gap-4 border-b border-room-line/60 pb-4"
               >
-                <span aria-hidden="true" className="text-2xl">
-                  {ev.kind === "agent_broken" ? "🔴" : "📦"}
-                </span>
+                {ev.kind === "agent_broken" ? (
+                  <ShieldAlert size={28} aria-hidden="true" className="shrink-0 self-center text-danger" />
+                ) : (
+                  <ShieldCheck size={28} aria-hidden="true" className="shrink-0 self-center text-agent" />
+                )}
                 <span className="font-display text-2xl sm:text-4xl">
                   {formatArenaEvent(ev)}
                 </span>

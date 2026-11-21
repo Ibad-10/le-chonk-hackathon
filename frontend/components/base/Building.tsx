@@ -98,7 +98,7 @@ export default function Building({
         {selected && (
           <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
             <ringGeometry args={[1.35, 1.6, 32]} />
-            <meshBasicMaterial color="#f5eef0" transparent opacity={0.9} />
+            <meshBasicMaterial color="#ffc53d" transparent opacity={0.9} />
           </mesh>
         )}
         {/* defence firing flash */}
@@ -113,14 +113,14 @@ export default function Building({
         <Html
           position={[0, isTreasury ? 6.2 : 3.1, 0]}
           center
-          distanceFactor={14}
+         
           className="pointer-events-none select-none"
           zIndexRange={[10, 0]}
         >
           <div
             className={`whitespace-nowrap rounded-md border px-2 py-0.5 text-xs font-semibold shadow ${
               isTreasury
-                ? "border-room-red bg-room-red/90 text-white"
+                ? "border-room-red bg-room-red/90 text-room-bg"
                 : "border-room-line bg-room-panel/90 text-room-text"
             } ${selected ? "ring-2 ring-room-red-soft" : ""}`}
           >

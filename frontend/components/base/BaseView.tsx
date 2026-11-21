@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { X } from "lucide-react";
+
+import StarRow from "@/components/Stars";
 
 import {
   buildingById,
@@ -28,10 +31,7 @@ export const KIND_LABELS: Record<BuildingKind, string> = {
 function Stars({ stars }: { stars: number | null }) {
   if (stars === null) return null;
   return (
-    <div className="font-display text-4xl tracking-widest text-room-red-soft" aria-label={`${stars} stars`}>
-      {"★".repeat(stars)}
-      <span className="text-room-line">{"★".repeat(3 - stars)}</span>
-    </div>
+    <StarRow count={stars} size={36} />
   );
 }
 
@@ -61,7 +61,14 @@ export default function BaseView({ village, events = null, owner = false, onRepl
   const showLabels = owner && !village.public;
 
   return (
-    <div className="relative overflow-hidden rounded-xl border border-room-line bg-room-bg" style={{ height: height ?? "70vh" }}>
+    <div
+      className={`relative overflow-hidden ${height === "100%" ? "" : "rounded-xl border border-room-line"}`}
+      style={{
+        height: height ?? "70vh",
+        // soft sky behind the village, never pure white
+        background: "radial-gradient(120% 90% at 50% 0%, #2b4a6b 0%, #1a2b3f 45%, #111113 100%)",
+      }}
+    >
       <BaseScene
         village={village}
         director={events ? director : null}
@@ -79,9 +86,9 @@ export default function BaseView({ village, events = null, owner = false, onRepl
               key={b.id}
               className={`rounded-full px-4 py-1 text-sm font-semibold shadow ${
                 b.tone === "red"
-                  ? "bg-room-red text-white"
+                  ? "bg-room-red text-room-bg"
                   : b.tone === "green"
-                    ? "bg-green-600/90 text-room-bg"
+                    ? "bg-success/90 text-room-bg"
                     : "bg-room-panel-2 text-room-text"
               }`}
             >
@@ -122,14 +129,14 @@ export default function BaseView({ village, events = null, owner = false, onRepl
             onClick={() => setSelectedId(null)}
             className="absolute right-2 top-2 text-room-muted hover:text-room-text"
           >
-            ✕
+            <X size={16} aria-hidden="true" />
           </button>
           <h3 className="pr-6 font-display text-sm text-room-text">{KIND_LABELS[selected.kind]}</h3>
           <p className="mt-1 text-xs text-room-muted">{selected.label}</p>
           <dl className="mt-3 space-y-1 text-xs">
             <div className="flex justify-between">
               <dt className="text-room-muted">fixed</dt>
-              <dd className="text-green-400">{selected.counts.fixed}</dd>
+              <dd className="text-success-soft">{selected.counts.fixed}</dd>
             </div>
             <div className="flex justify-between">
               <dt className="text-room-muted">flaky</dt>
@@ -162,7 +169,7 @@ export default function BaseView({ village, events = null, owner = false, onRepl
             <button
               type="button"
               onClick={() => onReplay(selected)}
-              className="mt-2 w-full rounded-md bg-room-red px-2 py-1 text-xs font-semibold text-white hover:bg-room-red-soft"
+              className="mt-2 w-full rounded-md bg-room-red px-2 py-1 text-xs font-semibold text-room-bg hover:bg-room-red-soft"
             >
               Replay attack
             </button>

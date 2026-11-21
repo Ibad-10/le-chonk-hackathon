@@ -28,10 +28,10 @@ function usePrefersReducedMotion(): boolean {
 }
 
 const NODE_COLORS: Record<GraphNodeType, string> = {
-  version: "#f5eef0",
-  attack: "#e5202b",
-  root_cause: "#ff5a63",
-  learned: "#7ddc8b",
+  version: "#edeef0",
+  attack: "#e54d2e",
+  root_cause: "#ffc53d",
+  learned: "#71d083",
 };
 
 export default function GraphPage({
@@ -108,7 +108,7 @@ function GraphPageInner({ params }: { params: Promise<{ id: string }> }) {
             graphData={data}
             width={960}
             height={560}
-            backgroundColor="#140a0d"
+            backgroundColor="#18191b"
             // respect prefers-reduced-motion: freeze the simulation almost
             // immediately instead of animating continuously
             d3AlphaDecay={reducedMotion ? 1 : 0.0228}
@@ -142,17 +142,17 @@ function GraphPageInner({ params }: { params: Promise<{ id: string }> }) {
               ctx.fillStyle = NODE_COLORS[n.type];
               ctx.fill();
               // icon glyph inside the shape
-              ctx.fillStyle = "#0a0507";
+              ctx.fillStyle = "#111113";
               ctx.font = "bold 9px sans-serif";
               ctx.textAlign = "center";
               ctx.textBaseline = "middle";
               ctx.fillText(appearance.icon, x, y + 0.5);
               // text label so type never relies on colour
               ctx.font = `${11 / Math.min(globalScale, 2)}px sans-serif`;
-              ctx.fillStyle = "#f5eef0";
+              ctx.fillStyle = "#edeef0";
               ctx.fillText(nodeLabel(n.type, n.label), x, y + r + 10);
             }}
-            linkColor={() => "#3a1d24"}
+            linkColor={() => "#363a3f"}
             linkDirectionalArrowLength={3}
             linkDirectionalArrowRelPos={1}
           />

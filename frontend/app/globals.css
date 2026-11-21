@@ -1,20 +1,33 @@
 @import "tailwindcss";
 @import "./siege.css";
 
-/* Red Room theme: deep near-black with a subtle red glow + grain, one accent
-   red, crisp white text. WCAG AA contrast on all text/background pairs. */
+/* Red Room theme: Radix Colors dark scales (slate base, amber primary,
+   tomato danger, grass success, sky agent side). Steps follow Radix roles:
+   1-2 app bg, 3-5 component bg, 6-8 borders, 9-10 solid, 11-12 text.
+   The room-* names are kept so existing utilities pick up the new scale. */
 
 @theme {
-  --color-room-bg: #0a0507;
-  --color-room-panel: #140a0d;
-  --color-room-panel-2: #1d1013;
-  --color-room-line: #3a1d24;
-  --color-room-red: #e5202b;
-  --color-room-red-soft: #ff5a63;
-  --color-room-text: #f5eef0;
-  --color-room-muted: #c9a7ad;
-  --font-display: var(--font-archivo-black), "Arial Black", sans-serif;
-  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --color-room-bg: #111113; /* slate 1 */
+  --color-room-panel: #18191b; /* slate 2 */
+  --color-room-panel-2: #212225; /* slate 3 */
+  --color-room-line: #363a3f; /* slate 6 */
+  --color-room-red: #ffc53d; /* amber 9 (primary solid) */
+  --color-room-red-soft: #ffca16; /* amber 11 (primary accent text) */
+  --color-room-text: #edeef0; /* slate 12 */
+  --color-room-muted: #b0b4ba; /* slate 11 */
+  --color-primary-bg: #302008; /* amber 3 */
+  --color-primary-line: #714f19; /* amber 7 */
+  --color-danger: #e54d2e; /* tomato 9 */
+  --color-danger-soft: #ff977d; /* tomato 11 */
+  --color-danger-bg: #391714; /* tomato 3 */
+  --color-success: #46a758; /* grass 9 */
+  --color-success-soft: #71d083; /* grass 11 */
+  --color-success-bg: #1b2a1e; /* grass 3 */
+  --color-agent: #7ce2fe; /* sky 9 */
+  --color-agent-soft: #75c7f0; /* sky 11 */
+  --color-agent-bg: #112840; /* sky 3 */
+  --font-display: var(--font-instrument-serif), Georgia, serif;
+  --font-sans: var(--font-inter), system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), monospace;
 }
 
@@ -27,10 +40,10 @@ body {
   background-color: var(--color-room-bg);
   color: var(--color-room-text);
   font-family: var(--font-sans);
-  /* subtle red glow from the top + grain overlay */
+  /* soft amber glow from the top + grain overlay */
   background-image:
-    radial-gradient(1200px 500px at 50% -10%, rgba(229, 32, 43, 0.16), transparent 60%),
-    radial-gradient(900px 420px at 85% 110%, rgba(229, 32, 43, 0.08), transparent 60%);
+    radial-gradient(1200px 500px at 50% -10%, rgba(255, 197, 61, 0.07), transparent 60%),
+    radial-gradient(900px 420px at 85% 110%, rgba(124, 226, 254, 0.04), transparent 60%);
   background-attachment: fixed;
 }
 
@@ -41,13 +54,13 @@ body::before {
   inset: 0;
   pointer-events: none;
   z-index: 1;
-  opacity: 0.05;
+  opacity: 0.03;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 ::selection {
   background: var(--color-room-red);
-  color: #fff;
+  color: var(--color-room-bg);
 }
 
 /* visible focus rings everywhere (keyboard usable) */
@@ -55,6 +68,12 @@ body::before {
   outline: 3px solid var(--color-room-red-soft);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+/* serif display headlines read best at normal weight with tight tracking */
+.font-display {
+  font-weight: 400;
+  letter-spacing: -0.01em;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -66,4 +85,50 @@ body::before {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* result card pops in */
+@keyframes raid-pop {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.raid-pop {
+  animation: raid-pop 260ms ease-out both;
+}
+
+@keyframes star-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.2) rotate(-25deg);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.25) rotate(6deg);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+.star-pop {
+  animation: star-pop 420ms cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
+}
+
+/* live events ticker */
+@keyframes ticker {
+  to {
+    transform: translateX(-50%);
+  }
+}
+.ticker {
+  animation: ticker 40s linear infinite;
+}
+.ticker:hover {
+  animation-play-state: paused;
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 
 import {
@@ -138,6 +138,19 @@ function Camps({ village }: { village: Village }) {
   );
 }
 
+/** Fit the orthographic zoom so the whole map fills the canvas, on load and resize. */
+function FitCamera() {
+  const { camera, size } = useThree();
+  useEffect(() => {
+    // the isometric diamond is ~2*MAP_HALF*1.41 wide and ~half that tall on screen
+    const span = MAP_HALF * 2 * 1.41;
+    const zoom = Math.min(size.width / span, (size.height * 1.7) / span) * 0.95;
+    camera.zoom = THREE.MathUtils.clamp(zoom, 13, 55);
+    camera.updateProjectionMatrix();
+  }, [camera, size.width, size.height]);
+  return null;
+}
+
 export interface BaseSceneProps {
   village: Village;
   director: DirectorState | null;
@@ -173,13 +186,14 @@ export default function BaseScene({
       camera={{ position: [16, 16, 16], zoom: 24, near: -60, far: 160 }}
       style={{ height, width: "100%", touchAction: "none" }}
       onPointerMissed={() => onSelect(null)}
-      gl={{ antialias: true }}
+      gl={{ antialias: true, alpha: true }}
     >
-      <color attach="background" args={["#141a22"]} />
-      <hemisphereLight args={["#d6e6ff", "#3c4a33", 1.0]} />
+      <FitCamera />
+      <hemisphereLight args={["#cfe6ff", "#4a5a35", 1.1]} />
       <directionalLight
         position={[14, 22, 8]}
-        intensity={1.8}
+        intensity={2.2}
+        color="#fff1d6"
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-18}
@@ -239,7 +253,7 @@ export default function BaseScene({
           position: village.treasury.position,
         }}
         label={village.treasury.label}
-        showLabel={showLabels && !village.public}
+        showLabel={showLabels && !village.public && selectedId === "treasury"}
         selected={selectedId === "treasury"}
         visual={{
           damaged: false,
@@ -255,7 +269,7 @@ export default function BaseScene({
           key={b.id}
           building={b}
           label={b.label}
-          showLabel={showLabels && !village.public}
+          showLabel={showLabels && !village.public && selectedId === b.id}
           selected={selectedId === b.id}
           visual={{
             damaged: (director?.damage[b.id] ?? 0) > 0,

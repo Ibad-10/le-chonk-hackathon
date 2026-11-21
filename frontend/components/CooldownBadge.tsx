@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Shield } from "lucide-react";
 
 import { formatCountdown, secondsUntil } from "@/lib/format";
 
@@ -27,8 +28,8 @@ export default function CooldownBadge({
       role="status"
       className="inline-flex items-center gap-1.5 rounded-full border border-room-red/60 bg-room-red/15 px-2.5 py-1 text-xs font-semibold text-room-red-soft"
     >
-      <span aria-hidden="true">⏱</span>
-      cooldown {formatCountdown(left)}
+      <Shield size={14} aria-hidden="true" />
+      shield {formatCountdown(left)}
     </span>
   );
 }
