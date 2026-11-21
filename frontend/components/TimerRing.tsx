@@ -15,6 +15,8 @@ interface TimerRingProps {
   paused?: boolean;
 }
 
+const ANNOUNCE_AT = [60, 30, 10];
+
 /**
  * Countdown ring (SVG). Ticks once per second, shows mm:ss in the middle and
  * calls onExpire exactly once when it reaches zero.
@@ -54,6 +56,14 @@ export default function TimerRing({
     return () => clearInterval(id);
   }, [seconds, endsAt, paused]);
 
+  // announce at 60 / 30 / 10 s (polite live region, not every tick)
+  const [announce, setAnnounce] = useState("");
+  useEffect(() => {
+    if (!paused && ANNOUNCE_AT.includes(left)) setAnnounce(`${left} seconds left`);
+  }, [left, paused]);
+  // amber at 60 s, tomato at 15 s
+  const tone = left <= 15 ? "danger" : left <= 60 ? "amber" : "ok";
+
   const R = 26;
   const C = 2 * Math.PI * R;
   const frac = seconds > 0 ? left / seconds : 0;
@@ -82,12 +92,21 @@ export default function TimerRing({
           strokeWidth="5"
           strokeDasharray={C}
           strokeDashoffset={C * (1 - frac)}
-          className="stroke-room-red transition-[stroke-dashoffset] duration-1000"
+          className={`transition-[stroke-dashoffset,stroke] duration-1000 ${
+            tone === "danger" ? "stroke-danger" : tone === "amber" ? "stroke-room-red" : "stroke-success"
+          }`}
           strokeLinecap="round"
         />
       </svg>
-      <span className="font-mono text-sm font-semibold text-room-text">
+      <span
+        className={`font-mono text-sm font-bold tabular-nums ${
+          tone === "danger" ? "text-danger-soft" : tone === "amber" ? "text-room-red-soft" : "text-room-text"
+        }`}
+      >
         {formatCountdown(left)}
+      </span>
+      <span role="status" aria-live="polite" className="sr-only">
+        {announce}
       </span>
     </div>
   );
