@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 
 import RetestPanel from "@/components/RetestPanel";
+import SiegeReplay from "@/components/SiegeReplay";
 
 import {
   analyseLogbook,
@@ -69,6 +70,7 @@ function LogbookSection({
   onAnalyse: () => void;
   analysing: boolean;
 }) {
+  const [replayEntryId, setReplayEntryId] = useState<string | null>(null);
   return (
     <section aria-label="Logbook" className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -107,11 +109,23 @@ function LogbookSection({
           </blockquote>
           {g.entries.map((entry) => (
             <div key={entry.id} className="mt-4 rounded-lg bg-room-panel-2 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs text-room-muted">
                 run {entry.run_id} · v{entry.agent_version} · language{" "}
                 {entry.language} · persona: {entry.persona ?? "unknown"} · tactic:{" "}
                 {entry.tactic ?? "unknown"} · {entry.risky_action}
               </p>
+              <button
+                type="button"
+                onClick={() =>
+                  setReplayEntryId((cur) => (cur === entry.id ? null : entry.id))
+                }
+                aria-pressed={replayEntryId === entry.id}
+                className="rounded-md border border-room-line bg-room-panel px-3 py-1 text-xs font-semibold text-room-text hover:border-room-red/70"
+              >
+                {replayEntryId === entry.id ? "✕ Close siege replay" : "▶ Replay as siege"}
+              </button>
+              </div>
               <ol className="mt-2 space-y-1 text-sm">
                 {entry.transcript.map((t, i) => {
                   const isBreaking =
@@ -138,6 +152,7 @@ function LogbookSection({
                   );
                 })}
               </ol>
+              {replayEntryId === entry.id && <SiegeReplay entry={entry} />}
             </div>
           ))}
         </article>

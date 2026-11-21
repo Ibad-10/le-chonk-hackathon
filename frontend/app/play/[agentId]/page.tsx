@@ -5,12 +5,12 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 
-import BattleView from "@/components/BattleView";
+import Siege from "@/components/Siege";
 import MessageCounter, { useMessageLimit } from "@/components/MessageCounter";
 import TimerRing from "@/components/TimerRing";
 import { endRun, getAgent, getRoleBrief, startRun, streamMessage } from "@/lib/api";
-import { MAX_PLAYER_MESSAGES, TEXT_RUN_SECONDS } from "@/lib/format";
-import type { BattleEvent } from "@/lib/battle";
+import { MAX_PLAYER_MESSAGES, TEXT_RUN_SECONDS, secondsUntil } from "@/lib/format";
+import { isReadTool, isRiskyTool, type SiegeEvent } from "@/lib/siege";
 import type { Agent, RoleBrief, RunResult } from "@/lib/types";
 
 interface ChatMessage {
@@ -50,8 +50,9 @@ function PlayPageInner({ agentId }: { agentId: string }) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<RunResult | null>(null);
-  const [battleOn, setBattleOn] = useState(false);
-  const [battleEvents, setBattleEvents] = useState<BattleEvent[]>([]);
+  const [siegeEvents, setSiegeEvents] = useState<SiegeEvent[]>([]);
+  const [secondsLeft, setSecondsLeft] = useState(TEXT_RUN_SECONDS);
+  const cooldownSentRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const limit = useMessageLimit(MAX_PLAYER_MESSAGES);
   const runIdRef = useRef<string | null>(null);
@@ -61,6 +62,21 @@ function PlayPageInner({ agentId }: { agentId: string }) {
   useEffect(() => {
     if (isLoaded && !isSignedIn) router.replace("/sign-in");
   }, [isLoaded, isSignedIn, router]);
+
+  // HUD clock (the TimerRing keeps its own ring; this feeds the siege HUD)
+  useEffect(() => {
+    const id = setInterval(() => setSecondsLeft((s) => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // agent in cooldown -> the fortress shows scaffolding in the siege
+  useEffect(() => {
+    if (!agent?.cooldown_until || cooldownSentRef.current) return;
+    const left = secondsUntil(agent.cooldown_until);
+    if (left <= 0) return;
+    cooldownSentRef.current = true;
+    setSiegeEvents((e) => [...e, { type: "cooldown", secondsLeft: Math.round(left) }]);
+  }, [agent]);
 
   useEffect(() => {
     let cancelled = false;
@@ -108,7 +124,9 @@ function PlayPageInner({ agentId }: { agentId: string }) {
     setDraft("");
     setSending(true);
     setMessages((m) => [...m, { role: "player", content: text }]);
-    setBattleEvents((e) => [...e, { type: "player_message" }]);
+    // tactic comes from the run's tactic/persona field when the backend
+    // provides it; until then the siege falls back to a keyword heuristic
+    setSiegeEvents((e) => [...e, { type: "playerMessage", text, tactic: null }]);
     setStreaming("");
     const token = isSignedIn ? await getToken() : null;
     await streamMessage(
@@ -117,13 +135,25 @@ function PlayPageInner({ agentId }: { agentId: string }) {
       {
         onChunk: (piece) => setStreaming((s) => s + piece),
         onDone: (event) => {
-          setBattleEvents((e) => [
+          const okTools = event.tool_events.filter((t) => t.ok);
+          const toolEvents: SiegeEvent[] = okTools.map((t): SiegeEvent | null =>
+            isRiskyTool(t.call.name, t.call.args)
+              ? { type: "riskyToolExecuted", tool: t.call.name }
+              : isReadTool(t.call.name)
+                ? { type: "readToolRan", tool: t.call.name }
+                : null
+          ).filter((x): x is SiegeEvent => x !== null);
+          setSiegeEvents((e) => [
             ...e,
-            { type: "agent_reply", refused: event.tool_events.length === 0 },
-            ...event.tool_events
-              .filter((t) => t.ok)
-              .map(() => ({ type: "tool_executed", risky: true }) as BattleEvent),
-            ...(event.ended && event.outcome === "win" ? [{ type: "win" } as BattleEvent] : []),
+            {
+              type: "agentReply",
+              text: event.reply ?? "",
+              refused: okTools.length === 0,
+            },
+            ...toolEvents,
+            ...(event.ended
+              ? [{ type: "runEnded", outcome: event.outcome ?? "block" } as SiegeEvent]
+              : []),
           ]);
           setStreaming((s) => {
             setMessages((m) => [
@@ -178,18 +208,6 @@ function PlayPageInner({ agentId }: { agentId: string }) {
             </button>
             <button
               type="button"
-              onClick={() => setBattleOn((b) => !b)}
-              aria-pressed={battleOn}
-              className={`rounded-md border px-4 py-2 text-sm font-medium ${
-                battleOn
-                  ? "border-room-red bg-room-red/15 text-room-red-soft"
-                  : "border-room-line bg-room-panel-2 text-room-muted hover:text-room-text"
-              }`}
-            >
-              ⚔️ Battle view {battleOn ? "on" : "off"}
-            </button>
-            <button
-              type="button"
               disabled
               title="Voice is being added by a separate builder"
               className="cursor-not-allowed rounded-md border border-room-line bg-room-panel-2 px-4 py-2 text-sm font-medium text-room-muted"
@@ -233,11 +251,14 @@ function PlayPageInner({ agentId }: { agentId: string }) {
         )}
       </aside>
 
-      {battleOn && (
-        <div className="lg:col-span-2">
-          <BattleView events={battleEvents} />
-        </div>
-      )}
+      <div className="lg:col-span-2">
+        <Siege
+          events={siegeEvents}
+          messagesRemaining={limit.remaining}
+          maxMessages={limit.max}
+          secondsLeft={secondsLeft}
+        />
+      </div>
 
       <section
         aria-label="Chat"
