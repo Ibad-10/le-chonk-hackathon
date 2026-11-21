@@ -19,7 +19,7 @@ See [docs/SUBMISSION.md](docs/SUBMISSION.md) for the hackathon submission: descr
 
 | Demo | What it shows | File |
 |---|---|---|
-| Demo video (1:29) | The pitch: the problem, Red Room, and the product in action | [docs/media/red-room-demo-video.mp4](docs/media/red-room-demo-video.mp4) |
+| Demo video (3:50) | The pitch: the problem, Red Room, and the product in action | [docs/media/red-room-demo-video.mp4](docs/media/red-room-demo-video.mp4) |
 | Screen recording walkthrough (4:11) | A full click-through of the live app: attacking agents, the logbook, retest and publish, voice, leaderboards | [docs/media/red-room-demo-walkthrough.mp4](docs/media/red-room-demo-walkthrough.mp4) |
 
 The 5-minute live demo script, with every click and line, is in [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md).
