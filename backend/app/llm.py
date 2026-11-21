@@ -1,4 +1,4 @@
-"""LLM client interface and the Mistral implementation (Task 4).
+"""LLM client interface and the Mistral implementation (Task 4, v4 streaming).
 
 All AI calls in the product go through the `LLMClient` protocol so tests can
 substitute fakes. `MistralLLM` uses the official `mistralai` Python SDK
@@ -9,12 +9,14 @@ when the requested model call fails with a rate-limit (HTTP 429) error.
 Verified against docs.mistral.ai (chat completions + reasoning): at high
 reasoning effort the response `message.content` is a list of chunks with a
 `ThinkChunk` before the final `TextChunk`; only the text chunks are extracted.
-High-effort calls must use `max_tokens >= 2000`.
+`stream_json` uses `chat.stream_async` (SSE under the hood) and pushes each
+text delta to `on_chunk` as it arrives; the concatenated text must parse to
+`schema`. High-effort calls must use `max_tokens >= 2000`.
 """
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Any, Awaitable, Callable, Protocol
 
 from pydantic import BaseModel
 
@@ -32,6 +34,19 @@ class LLMClient(Protocol):
         timeout_s: float,
     ) -> BaseModel:
         """One chat-completions call that must return JSON matching `schema`."""
+        ...
+
+    async def stream_json(
+        self,
+        model: str,
+        system: str,
+        messages: list[dict[str, Any]],
+        schema: type[BaseModel],
+        reasoning_effort: str | None,
+        timeout_s: float,
+        on_chunk: Callable[[str], Awaitable[None]],
+    ) -> BaseModel:
+        """Streaming variant of `json`: each text delta goes to `on_chunk`."""
         ...
 
 
@@ -62,7 +77,7 @@ class MistralLLM:
         self._client = Mistral(api_key=api_key or settings.mistral_api_key)
         self._fallback_model = settings.mistral_model_fallback
 
-    async def json(
+    def _request(
         self,
         model: str,
         system: str,
@@ -70,9 +85,7 @@ class MistralLLM:
         schema: type[BaseModel],
         reasoning_effort: str | None,
         timeout_s: float,
-    ) -> BaseModel:
-        from mistralai.client.errors import MistralError
-
+    ) -> dict[str, Any]:
         request: dict[str, Any] = {
             "model": model,
             "messages": [{"role": "system", "content": system}]
@@ -96,7 +109,20 @@ class MistralLLM:
         elif reasoning_effort == "low":
             # cap output tokens: without this the model spends the budget thinking
             request["max_tokens"] = 800
+        return request
 
+    async def json(
+        self,
+        model: str,
+        system: str,
+        messages: list[dict[str, Any]],
+        schema: type[BaseModel],
+        reasoning_effort: str | None,
+        timeout_s: float,
+    ) -> BaseModel:
+        from mistralai.client.errors import MistralError
+
+        request = self._request(model, system, messages, schema, reasoning_effort, timeout_s)
         try:
             response = await self._client.chat.complete_async(**request)
         except MistralError as exc:
@@ -110,6 +136,44 @@ class MistralLLM:
             else:
                 raise
         text = final_text(response.choices[0].message.content)
+        return schema.model_validate_json(text)
+
+    async def stream_json(
+        self,
+        model: str,
+        system: str,
+        messages: list[dict[str, Any]],
+        schema: type[BaseModel],
+        reasoning_effort: str | None,
+        timeout_s: float,
+        on_chunk: Callable[[str], Awaitable[None]],
+    ) -> BaseModel:
+        from mistralai.client.errors import MistralError
+
+        request = self._request(model, system, messages, schema, reasoning_effort, timeout_s)
+
+        async def _stream(req: dict[str, Any]) -> str:
+            pieces: list[str] = []
+            stream = await self._client.chat.stream_async(**req)
+            async for event in stream:
+                choices = event.data.choices
+                if not choices:
+                    continue
+                text = final_text(choices[0].delta.content)
+                if text:
+                    pieces.append(text)
+                    await on_chunk(text)
+            return "".join(pieces)
+
+        try:
+            text = await _stream(request)
+        except MistralError as exc:
+            if getattr(exc, "status_code", None) == 429 and model != self._fallback_model:
+                request["model"] = self._fallback_model
+                request.pop("reasoning_effort", None)
+                text = await _stream(request)
+            else:
+                raise
         return schema.model_validate_json(text)
 
     async def moderate(self, text: str, timeout_s: float = 10.0) -> dict[str, bool]:

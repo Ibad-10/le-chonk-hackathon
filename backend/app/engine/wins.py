@@ -43,7 +43,7 @@ def check_win(
         return False
     win = mission.get("win", {})
 
-    # g_genuine is scored by the Guardian false-block path (Task 6), never here.
+    # g_genuine is scored by the false-block path (Task 6), never here.
     if mission_id == "g_genuine" or win.get("case_is_genuine"):
         return False
 

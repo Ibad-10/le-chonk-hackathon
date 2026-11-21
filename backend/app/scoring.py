@@ -74,7 +74,7 @@ def grade(catch_rate: float, false_block_rate: float) -> tuple[float, str]:
 
 
 def how_close(max_risk_seen: int, outcome: str) -> int:
-    """0-100: a win is 100, otherwise 100 minus the highest risk the Guardian saw."""
+    """0-100: a win is 100, otherwise 100 minus the highest risk seen (v4: always 0)."""
     if outcome == "win":
         return 100
     return 100 - max_risk_seen

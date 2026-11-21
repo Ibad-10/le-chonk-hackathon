@@ -37,8 +37,11 @@ class Settings:
     next_public_supabase_url: str = _get("NEXT_PUBLIC_SUPABASE_URL")
     next_public_supabase_anon_key: str = _get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
 
-    # Guardian gate (live calls use the main model at low effort)
-    guardian_timeout_s: float = float(_get("GUARDIAN_TIMEOUT_S", "15"))
+    # Run limits (v4)
+    run_voice_s: float = float(_get("RUN_VOICE_S", "300"))
+    run_text_s: float = float(_get("RUN_TEXT_S", "600"))
+    run_text_messages: int = int(_get("RUN_TEXT_MESSAGES", "20"))
+    run_idle_s: float = float(_get("RUN_IDLE_S", "60"))
 
     # App wiring
     backend_url: str = _get("BACKEND_URL", "http://localhost:8000")

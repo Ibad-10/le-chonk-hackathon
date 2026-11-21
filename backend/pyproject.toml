@@ -1,7 +1,7 @@
 [project]
 name = "red-room-backend"
 version = "0.1.0"
-description = "Red Room backend: FastAPI agent engine, Guardian gate, scoring and versions"
+description = "Red Room backend: FastAPI agent engine, sandbox tools, scoring and versions"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi",

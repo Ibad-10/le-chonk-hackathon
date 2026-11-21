@@ -1,10 +1,11 @@
-"""One agent turn: LLM + tool loop (Task 6).
+"""One agent turn: LLM + tool loop (v4, no external judge).
 
 `agent_turn` sends the target's role prompt (plus a caller-language instruction)
 to the main model at low reasoning effort, executes any tool calls through the
-Guardian-gated executor (max 4 per turn), feeds the results back, and returns
-the agent's final reply plus the tool events. Tests substitute a fake LLM and a
-fake Guardian.
+sandbox executor (max 4 per turn), feeds the results back, and returns the
+agent's final reply plus the tool events. With `on_chunk`, LLM output chunks
+are streamed live to the callback (used by the SSE text endpoint). Tests
+substitute a fake LLM.
 """
 
 from __future__ import annotations
@@ -16,10 +17,10 @@ from typing import Any, Awaitable, Callable
 from pydantic import BaseModel, Field
 
 from app.config import settings
-from app.engine.executor import ExecResult, GuardianFn, execute
+from app.engine.executor import ExecResult, execute
 from app.engine.mock_state import MockState
 from app.llm import LLMClient
-from app.models import GuardianDecision, TargetConfig, ToolCall, Turn
+from app.models import TargetConfig, ToolCall, Turn
 
 MAX_TOOL_CALLS_PER_TURN = 4
 AGENT_TIMEOUT_S = 30.0
@@ -53,8 +54,6 @@ class ToolEvent:
     call: ToolCall
     ok: bool
     result: Any = None
-    decision: GuardianDecision | None = None
-    stopped_by: str | None = None
     error: bool = False
 
     def to_dict(self) -> dict[str, Any]:
@@ -62,8 +61,6 @@ class ToolEvent:
             "call": self.call.model_dump(),
             "ok": self.ok,
             "result": str(self.result),
-            "decision": self.decision.model_dump() if self.decision else None,
-            "stopped_by": self.stopped_by,
             "error": self.error,
         }
 
@@ -114,9 +111,9 @@ async def agent_turn(
     target: TargetConfig,
     state: MockState,
     transcript: list[Turn],
-    guardian: GuardianFn | None,
     language: str = "auto",
     model: str | None = None,
+    on_chunk: Callable[[str], Awaitable[None]] | None = None,
 ) -> TurnResult:
     """Run one agent turn: at most MAX_TOOL_CALLS_PER_TURN tool calls, then a reply."""
     system = agent_system_prompt(target, language)
@@ -124,14 +121,25 @@ async def agent_turn(
     events: list[ToolEvent] = []
     calls_done = 0
     while True:
-        resp = await llm.json(
-            model=model or settings.mistral_model_main,
-            system=system,
-            messages=messages,
-            schema=AgentResponse,
-            reasoning_effort="low",
-            timeout_s=AGENT_TIMEOUT_S,
-        )
+        if on_chunk is not None:
+            resp = await llm.stream_json(
+                model=model or settings.mistral_model_main,
+                system=system,
+                messages=messages,
+                schema=AgentResponse,
+                reasoning_effort="low",
+                timeout_s=AGENT_TIMEOUT_S,
+                on_chunk=on_chunk,
+            )
+        else:
+            resp = await llm.json(
+                model=model or settings.mistral_model_main,
+                system=system,
+                messages=messages,
+                schema=AgentResponse,
+                reasoning_effort="low",
+                timeout_s=AGENT_TIMEOUT_S,
+            )
         if not isinstance(resp, AgentResponse):
             resp = AgentResponse.model_validate(resp)
         pending = resp.tool_calls
@@ -141,14 +149,12 @@ async def agent_turn(
             if calls_done >= MAX_TOOL_CALLS_PER_TURN:
                 break
             call = ToolCall(name=tc.name, args=dict(tc.args))
-            res: ExecResult = await execute(call, target, state, transcript, guardian)
+            res: ExecResult = await execute(call, state)
             events.append(
                 ToolEvent(
                     call=call,
                     ok=res.ok,
                     result=res.result,
-                    decision=res.decision,
-                    stopped_by=res.stopped_by,
                     error=res.error,
                 )
             )

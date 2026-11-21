@@ -1,41 +1,23 @@
-"""Task 1 tests: shared Pydantic models."""
+"""Task 1 tests: shared Pydantic models (v4: stopped_by is agent/none only)."""
 
 import pytest
 from pydantic import ValidationError
 
-from app.models import GuardianDecision, ToolCall, Turn
+from app.models import Run, ToolCall, Turn
+from datetime import datetime, timezone
 
 
-def _decision(**overrides) -> GuardianDecision:
-    kwargs = dict(
-        decision="allow",
-        risk=50,
-        reason="ok",
-        rule_ids=[],
-        signals=[],
+def test_stopped_by_only_agent_or_none():
+    base = dict(
+        id="r1", player_id="p", agent_id="bank-ava", agent_version=1,
+        started_at=datetime.now(timezone.utc),
     )
-    kwargs.update(overrides)
-    return GuardianDecision(**kwargs)
-
-
-def test_guardian_decision_rejects_unknown_decision():
+    assert Run(**base, stopped_by="agent").stopped_by == "agent"
+    assert Run(**base, stopped_by="none").stopped_by == "none"
     with pytest.raises(ValidationError):
-        _decision(decision="maybe")
-
-
-def test_risk_bounds():
+        Run(**base, stopped_by="guardian")
     with pytest.raises(ValidationError):
-        _decision(risk=101)
-    with pytest.raises(ValidationError):
-        _decision(risk=-1)
-    # boundary values are valid
-    assert _decision(risk=0).risk == 0
-    assert _decision(risk=100).risk == 100
-
-
-def test_guardian_decision_accepts_all_valid_decisions():
-    for d in ("allow", "step_up", "block"):
-        assert _decision(decision=d).decision == d
+        Run(**base, stopped_by="hard_limit")
 
 
 def test_tool_call_and_turn_roundtrip():
