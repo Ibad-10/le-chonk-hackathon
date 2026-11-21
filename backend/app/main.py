@@ -7,6 +7,7 @@ runs are persisted through SQLiteRunsRepo.
 
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -44,9 +45,16 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Red Room", lifespan=lifespan)
 
+# Allowed browser origins, comma-separated (deployed frontend + local dev).
+_cors_origins = [
+    o.strip()
+    for o in os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
+    if o.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

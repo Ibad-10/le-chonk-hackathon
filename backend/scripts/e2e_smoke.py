@@ -37,7 +37,22 @@ load_dotenv(REPO_ROOT / ".env")  # ../.env when run from backend/
 CLERK_SECRET_KEY = os.environ.get("CLERK_SECRET_KEY", "")
 PUBLISHABLE_KEY = os.environ.get("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "")
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
-BACKEND = "http://localhost:8000"
+
+
+def _base_url() -> str:
+    # --backend=<url> or a bare first arg, else SMOKE_BACKEND_URL env, else local.
+    for a in sys.argv[1:]:
+        if a.startswith("--backend="):
+            return a.split("=", 1)[1]
+    if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
+        return sys.argv[1]
+    return os.environ.get("SMOKE_BACKEND_URL", "http://localhost:8000")
+
+
+BACKEND = _base_url().rstrip("/")
+# Against a remote backend (e.g. the HF Space) we do not spawn a local uvicorn;
+# the Supabase row check below still runs locally against the same DATABASE_URL.
+IS_LOCAL = BACKEND.startswith(("http://localhost", "http://127.0.0.1"))
 CLERK_BAPI = "https://api.clerk.com/v1"
 
 SMOKE_USER = "redroom-smoke"
@@ -116,14 +131,16 @@ def main() -> int:
     token = clerk_session_token()
     auth = {"Authorization": f"Bearer {token}"}
 
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"],
-        cwd=BACKEND_DIR,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
+    proc = None
+    if IS_LOCAL:
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"],
+            cwd=BACKEND_DIR,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
     try:
-        check("backend: uvicorn /health on :8000", wait_health(), "")
+        check(f"backend: GET /health on {BACKEND}", wait_health(), "")
 
         with httpx.Client(timeout=180, base_url=BACKEND) as http:
             r = http.get("/agents")
@@ -194,11 +211,12 @@ def main() -> int:
             f"agent_id={row[1] if row else None} outcome={row[3] if row else None} spectate={row[4] if row else None}",
         )
     finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+        if proc is not None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
 
     print("\n=== e2e smoke summary ===")
     for name, ok, detail in results:
