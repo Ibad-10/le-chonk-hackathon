@@ -117,6 +117,7 @@ class LogbookEntry(SQLModel, table=True):
     stopped_by: str | None = None
     family: str | None = None  # tactic family, filled by the analyst
     root_cause: str | None = None  # v4: analyst group this entry belongs to
+    siblings: list[Any] = Field(default_factory=list, sa_column=Column(JSON))  # v4: cached sibling variants
     language: str | None = None  # v4.1: caller language of the run
     loss_kind: str | None = None  # "security" | "helpfulness"
     signals: list[Any] = Field(default_factory=list, sa_column=Column(JSON))

@@ -106,7 +106,9 @@ def list_logbook(engine: Engine, agent_id: str) -> list[LogbookEntry]:
         )
 
 
-async def analyse_agent(llm: LLMClient, engine: Engine, agent_id: str) -> Analysis:
+async def analyse_agent(
+    llm: LLMClient, engine: Engine, agent_id: str, agent_run: Any = None
+) -> Analysis:
     """Run the analyst over the agent's open logbook entries, persist the root
     cause on each entry and record `root_cause` graph events. Explains only."""
     with Session(engine) as session:
@@ -121,12 +123,29 @@ async def analyse_agent(llm: LLMClient, engine: Engine, agent_id: str) -> Analys
             r.id: _to_run(r)
             for r in session.exec(select(RunRow).where(RunRow.agent_id == agent_id)).all()
         }
-    result = await analyze(llm, llm.embed, entries, runs_by_id)
+    result = await analyze(llm, llm.embed, entries, runs_by_id, agent_run=agent_run)
     with Session(engine) as session:
+        all_entries = session.exec(
+            select(LogbookEntry).where(LogbookEntry.agent_id == agent_id)
+        ).all()
         for group in result.groups:
-            for entry in session.exec(select(LogbookEntry)).all():
-                if entry.agent_id == agent_id and entry.run_id in group.example_run_ids:
+            newly_grouped: list[LogbookEntry] = []
+            for entry in all_entries:
+                if entry.run_id in group.example_run_ids and entry.open:
                     entry.root_cause = group.root_cause
+                    newly_grouped.append(entry)
+            # v4 §3.6: a new arena loss landing in an already-fixed (closed)
+            # root-cause group reopens it with the flag fix_did_not_generalise
+            closed = [
+                e for e in all_entries
+                if not e.open and e.root_cause == group.root_cause and e not in newly_grouped
+            ]
+            if closed and newly_grouped:
+                for e in closed:
+                    e.open = True
+                    e.signals = list(e.signals) + ["fix_did_not_generalise"]
+                for e in newly_grouped:
+                    e.signals = list(e.signals) + ["fix_did_not_generalise"]
             session.add(
                 GraphEvent(
                     id=uuid.uuid4().hex,

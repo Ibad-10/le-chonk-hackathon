@@ -109,6 +109,8 @@ create table if not exists public.logbook_entries (
   outcome text not null,
   stopped_by text check (stopped_by in ('agent','hard_limit','guardian','none')),
   family text,
+  root_cause text,                             -- v4: analyst group this entry belongs to
+  siblings jsonb not null default '[]'::jsonb, -- v4: cached sibling variants per failure
   signals jsonb not null default '[]'::jsonb,
   how_close int not null default 0,
   open boolean not null default true,
