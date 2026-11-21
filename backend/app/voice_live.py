@@ -31,17 +31,25 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import logging
 import math
 import re
 import time
 from typing import Any, AsyncIterator, Awaitable, Callable, Protocol
 
-import httpx
 import websockets
 
 from app.config import settings
 from app.runs import RunService
-from app.voice import MISTRAL_API_BASE, voice_id_for
+from app.voice import MISTRAL_API_BASE, mistral_http_client, voice_id_for
+
+logger = logging.getLogger("redroom.voice_live")
+# INFO under uvicorn too (root defaults to WARNING, which would drop these)
+logger.setLevel(logging.INFO)
+if not logger.handlers and not logging.getLogger().handlers:
+    _h = logging.StreamHandler()
+    _h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
+    logger.addHandler(_h)
 
 MISTRAL_WS_BASE = "wss://api.mistral.ai/v1"
 STT_SAMPLE_RATE = 16000  # browser sends 16 kHz mono pcm_s16le
@@ -119,26 +127,28 @@ async def stream_tts_pcm(text: str, voice_id: str, api_key: str) -> AsyncIterato
         "response_format": "pcm",
     }
     headers = {"Authorization": f"Bearer {api_key}"}
-    async with httpx.AsyncClient(base_url=MISTRAL_API_BASE, timeout=None) as client:
-        async with client.stream("POST", "/audio/speech", json=body, headers=headers) as resp:
-            if resp.status_code >= 400:
-                await resp.aread()
-                raise RuntimeError(f"TTS failed (HTTP {resp.status_code})")
-            event_type: str | None = None
-            async for line in resp.aiter_lines():
-                if line.startswith("event:"):
-                    event_type = line[len("event:"):].strip()
-                elif line.startswith("data:"):
-                    payload = line[len("data:"):].strip()
-                    if not payload:
-                        continue
-                    data = json.loads(payload)
-                    etype = data.get("type") or event_type
-                    if etype == "speech.audio.delta" and data.get("audio_data"):
-                        yield base64.b64decode(data["audio_data"])
-                    elif etype == "speech.audio.done":
-                        return
-                    event_type = None
+    # latency: one shared AsyncClient/connection pool for every Mistral HTTP call
+    # (a fresh client per sentence would pay TCP+TLS setup each time)
+    client = mistral_http_client()
+    async with client.stream("POST", "/audio/speech", json=body, headers=headers, timeout=None) as resp:
+        if resp.status_code >= 400:
+            await resp.aread()
+            raise RuntimeError(f"TTS failed (HTTP {resp.status_code})")
+        event_type: str | None = None
+        async for line in resp.aiter_lines():
+            if line.startswith("event:"):
+                event_type = line[len("event:"):].strip()
+            elif line.startswith("data:"):
+                payload = line[len("data:"):].strip()
+                if not payload:
+                    continue
+                data = json.loads(payload)
+                etype = data.get("type") or event_type
+                if etype == "speech.audio.delta" and data.get("audio_data"):
+                    yield base64.b64decode(data["audio_data"])
+                elif etype == "speech.audio.done":
+                    return
+                event_type = None
 
 
 _SENTENCE_END = re.compile(r"[.!?]")
@@ -215,6 +225,10 @@ class LiveCall:
         self._send_lock = asyncio.Lock()
         self._turn_queue: asyncio.Queue[str] = asyncio.Queue()
         self._tasks: list[asyncio.Task] = []
+        # latency instrumentation (per-stage timing logs)
+        self._t0 = 0.0
+        self._stt_final_pc: float | None = None
+        self._first_token_logged = False
 
     # -- helpers ------------------------------------------------------------
 
@@ -222,9 +236,27 @@ class LiveCall:
         async with self._send_lock:
             await self.ws.send_json(msg)
 
+    def _tlog(self, stage: str, **fields: Any) -> None:
+        """One timing log line per pipeline stage (voice latency review).
+
+        `t` is seconds since the call started; `since_stt_final` is seconds
+        since the player's utterance was finalized (None before that)."""
+        now = time.perf_counter()
+        since = round(now - self._stt_final_pc, 3) if self._stt_final_pc is not None else None
+        extra = " ".join(f"{k}={v}" for k, v in fields.items())
+        logger.info(
+            "voice_latency run=%s stage=%s t=+%.3fs since_stt_final=%s %s",
+            self.run_id,
+            stage,
+            now - self._t0,
+            since,
+            extra,
+        )
+
     # -- lifecycle ----------------------------------------------------------
 
     async def handle(self) -> None:
+        self._t0 = time.perf_counter()
         run = self.runs.repo.get(self.run_id)
         if run is None:
             await self._send({"type": "error", "detail": "run not found"})
@@ -425,6 +457,8 @@ class LiveCall:
                     self._turn_end_at = None
                     await self._send({"type": "speech_end"})
                     if text:
+                        self._stt_final_pc = time.perf_counter()
+                        self._tlog("stt_final", chars=len(text))
                         await self._send({"type": "caption", "role": "player", "text": text, "final": True})
                         await self._turn_queue.put(text)
 
@@ -447,6 +481,8 @@ class LiveCall:
     async def _run_reply(self, text: str) -> None:
         self._interrupted = False
         self._buf = ""
+        self._first_token_logged = False
+        self._tlog("agent_turn_start", player_chars=len(text))
         queue: asyncio.Queue = asyncio.Queue()
         worker = asyncio.create_task(self._tts_loop(queue))
         try:
@@ -454,6 +490,9 @@ class LiveCall:
                 if self._interrupted:
                     break
                 if ev["type"] == "chunk":
+                    if not self._first_token_logged:
+                        self._first_token_logged = True
+                        self._tlog("agent_first_token", chars=len(ev["text"]))
                     await self._send({"type": "caption", "role": "agent", "text": ev["text"], "final": False})
                     self._buf += ev["text"]
                     while True:
@@ -463,6 +502,7 @@ class LiveCall:
                         await queue.put(sentence)
                 else:  # done
                     reply = str(ev.get("reply") or "")
+                    self._tlog("agent_turn_end", reply_chars=len(reply))
                     if self._buf.strip():
                         await queue.put(self._buf)
                         self._buf = ""
@@ -489,6 +529,7 @@ class LiveCall:
                 if item is None:
                     return
                 continue
+            self._tlog("tts_request", sentence=item[:80])
             if not audio_started:
                 await self._send(
                     {
@@ -500,9 +541,13 @@ class LiveCall:
                 )
                 audio_started = True
             try:
+                first_chunk = True
                 async for chunk in self._tts_stream(item, self._voice_id):
                     if self._interrupted:
                         break
+                    if first_chunk:
+                        first_chunk = False
+                        self._tlog("tts_first_chunk", sentence=item[:80], bytes=len(chunk))
                     await self._send({"type": "audio", "data": base64.b64encode(chunk).decode("ascii")})
             except asyncio.CancelledError:
                 raise

@@ -50,6 +50,7 @@ from app.roles import (
 from app.scoring import elo_update, how_close, points
 
 ABANDONED_REFUND_S = 10.0
+VOICE_AGENT_MAX_TOKENS = 300  # latency: small output cap on live voice turns
 MIN_MESSAGES_FOR_CONTEST = 3  # fewer player messages (or a hang-up) = no contest
 START_ELO = 1200.0
 START_RD = 200.0  # widened uncertainty right after (re)publishing a version
@@ -407,6 +408,9 @@ class RunService:
         # 3. player turn -> agent turn (LLM + sandbox-gated tools)
         run.transcript.append(Turn(role="player", content=text))
         session.player_messages += 1
+        # latency: live voice turns use VOICE_AGENT_MODEL (default: main model)
+        # with a small max_tokens cap and low reasoning effort
+        voice = run.channel == "voice"
         try:
             result = await agent_turn(
                 self.llm,
@@ -414,6 +418,8 @@ class RunService:
                 session.state,
                 run.transcript,
                 language=run.language,
+                model=settings.voice_agent_model if voice else None,
+                max_tokens=VOICE_AGENT_MAX_TOKENS if voice else None,
                 on_chunk=on_chunk,
             )
         except Exception:

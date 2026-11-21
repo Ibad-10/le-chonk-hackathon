@@ -107,6 +107,7 @@ async def agent_turn(
     transcript: list[Turn],
     language: str = "auto",
     model: str | None = None,
+    max_tokens: int | None = None,
     on_chunk: Callable[[str], Awaitable[None]] | None = None,
     owner_instructions: str = "",
     knowledge: list[Any] | None = None,
@@ -127,6 +128,7 @@ async def agent_turn(
                 reasoning_effort="low",
                 timeout_s=AGENT_TIMEOUT_S,
                 on_chunk=on_chunk,
+                max_tokens=max_tokens,
             )
         else:
             resp = await llm.chat(
@@ -136,6 +138,7 @@ async def agent_turn(
                 tools=tools,
                 reasoning_effort="low",
                 timeout_s=AGENT_TIMEOUT_S,
+                max_tokens=max_tokens,
             )
         pending = resp.tool_calls
         if not pending or calls_done >= MAX_TOOL_CALLS_PER_TURN:

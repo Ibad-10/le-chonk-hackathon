@@ -185,3 +185,51 @@ async def test_stream_chat_streams_plain_text_and_parses_tool_deltas(monkeypatch
     assert all(not c.lstrip().startswith("{") for c in chunks)
     assert out.content == "Hello world"
     assert out.tool_calls == [ToolCall(name="get_balance", args={"a": 1})]
+
+
+async def test_chat_max_tokens_override_and_default(monkeypatch):
+    """Latency fix: voice turns pass max_tokens=300; the low-effort default
+    (800) is unchanged when no override is given."""
+    fake = _FakeSDK()
+    llm = _make_llm(monkeypatch, fake)
+    await llm.chat(
+        model=settings.mistral_model_main,
+        system="s",
+        messages=[{"role": "user", "content": "hi"}],
+        tools=_TOOLS,
+        reasoning_effort="low",
+        timeout_s=15.0,
+        max_tokens=300,
+    )
+    assert fake.chat.requests[0]["max_tokens"] == 300
+    assert fake.chat.requests[0]["reasoning_effort"] == "low"
+    await llm.chat(
+        model=settings.mistral_model_main,
+        system="s",
+        messages=[{"role": "user", "content": "hi"}],
+        tools=_TOOLS,
+        reasoning_effort="low",
+        timeout_s=15.0,
+    )
+    assert fake.chat.requests[1]["max_tokens"] == 800
+
+
+async def test_stream_chat_max_tokens_override(monkeypatch):
+    fake = _FakeSDK()
+    fake.chat = _FakeStreamChat([_delta(content="ok")])
+    llm = _make_llm(monkeypatch, fake)
+    async def on_chunk(piece):
+        pass
+
+    out = await llm.stream_chat(
+        model=settings.mistral_model_main,
+        system="s",
+        messages=[{"role": "user", "content": "hi"}],
+        tools=_TOOLS,
+        reasoning_effort="low",
+        timeout_s=15.0,
+        on_chunk=on_chunk,
+        max_tokens=300,
+    )
+    assert out.content == "ok"
+    assert fake.chat.stream_requests[0]["max_tokens"] == 300

@@ -30,7 +30,7 @@ class FakeLLM:
         self.agent_calls: list[dict] = []
         self.language_calls = 0
 
-    def _next_turn(self, system, messages, model, reasoning_effort, tools):
+    def _next_turn(self, system, messages, model, reasoning_effort, tools, max_tokens=None):
         if self.raise_exc is not None:
             raise self.raise_exc
         self.agent_calls.append(
@@ -40,6 +40,7 @@ class FakeLLM:
                 "messages": [dict(m) for m in messages],
                 "tools": tools,
                 "reasoning_effort": reasoning_effort,
+                "max_tokens": max_tokens,
             }
         )
         resp = self.responses.pop(0) if len(self.responses) > 1 else self.responses[0]
@@ -59,11 +60,11 @@ class FakeLLM:
             return schema.model_validate({"language": self.language})
         raise AssertionError("agent turns must use chat/stream_chat, not json")
 
-    async def chat(self, model, system, messages, tools, reasoning_effort, timeout_s):
-        return self._next_turn(system, messages, model, reasoning_effort, tools)
+    async def chat(self, model, system, messages, tools, reasoning_effort, timeout_s, max_tokens=None):
+        return self._next_turn(system, messages, model, reasoning_effort, tools, max_tokens)
 
-    async def stream_chat(self, model, system, messages, tools, reasoning_effort, timeout_s, on_chunk):
-        turn = self._next_turn(system, messages, model, reasoning_effort, tools)
+    async def stream_chat(self, model, system, messages, tools, reasoning_effort, timeout_s, on_chunk, max_tokens=None):
+        turn = self._next_turn(system, messages, model, reasoning_effort, tools, max_tokens)
         if self.stream_chunks is not None:
             for piece in self.stream_chunks:
                 await on_chunk(piece)

@@ -507,3 +507,45 @@ def test_first_message_auth_required_without_query_token():
                 break
     assert factory_calls and factory_calls[0][1] == "user_live_456"
     assert any(m.get("type") == "session.update" for m in stt.sent)
+
+
+async def test_latency_stage_timing_logs(caplog):
+    """Latency review: one log line per pipeline stage (STT final, agent turn
+    start/first token/end, TTS request/first chunk) with relative timings."""
+    import logging
+    import re
+
+    llm = FakeLLM(responses=[{"reply": "Your balance is 100 pounds.", "tool_calls": []}])
+    runs = make_runs(llm)
+    stt = FakeSTT(session_events())
+    ws = FakeWS()
+    tts = FakeTTS()
+    call = make_call(runs, stt, ws, tts)
+
+    async def script(ws: FakeWS, call: LiveCall):
+        await wait_for(lambda: bool(ws.of("ready")))
+        ws.push({"type": "audio", "data": loud_frame()})
+        stt.push({"type": "transcription.text.delta", "text": "what is my balance?"})
+        stt.push({"type": "turn.end", "time_s": 1.0, "end_reason": "threshold"})
+        await wait_for(lambda: bool(ws.of("audio_end")))
+        ws.push({"type": "end"})
+
+    with caplog.at_level(logging.INFO, logger="redroom.voice_live"):
+        await drive(call, ws, script)
+
+    stages = set()
+    for rec in caplog.records:
+        if "voice_latency" not in rec.getMessage():
+            continue
+        m = re.search(r"stage=(\w+)", rec.getMessage())
+        if m:
+            stages.add(m.group(1))
+        assert "t=+" in rec.getMessage() and "since_stt_final=" in rec.getMessage()
+    assert {
+        "stt_final",
+        "agent_turn_start",
+        "agent_first_token",
+        "agent_turn_end",
+        "tts_request",
+        "tts_first_chunk",
+    } <= stages

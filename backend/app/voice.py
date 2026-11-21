@@ -26,6 +26,20 @@ from app.config import settings
 from app.runs import RunNotFound, RunService
 
 MISTRAL_API_BASE = "https://api.mistral.ai/v1"
+
+_http_client: httpx.AsyncClient | None = None
+
+
+def mistral_http_client() -> httpx.AsyncClient:
+    """One shared AsyncClient (one connection pool) for ALL Mistral HTTP calls.
+
+    Latency: creating a client per call pays TCP+TLS setup every time (the live
+    voice path calls TTS once per sentence); a single pooled client reuses the
+    keep-alive connections."""
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(base_url=MISTRAL_API_BASE, timeout=None)
+    return _http_client
 STT_TIMEOUT_S = 30.0
 TTS_TIMEOUT_S = 30.0
 AUDIO_CONTENT_TYPE = "audio/mpeg"
@@ -72,20 +86,21 @@ class VoiceService:
     ) -> tuple[int, Any]:
         """One authenticated call to the Mistral API (JSON body, or multipart
         when `files` is given, with plain fields in `data`)."""
-        async with httpx.AsyncClient(base_url=MISTRAL_API_BASE, timeout=60.0) as client:
-            resp = await client.post(
-                path,
-                json=json_body,
-                data=data,
-                files=files,
-                headers=headers or self._headers(),
-            )
-            payload: Any
-            if resp.headers.get("content-type", "").startswith("application/json"):
-                payload = resp.json()
-            else:
-                payload = resp.content
-            return resp.status_code, payload
+        client = mistral_http_client()  # shared pool, never closed per call
+        resp = await client.post(
+            path,
+            json=json_body,
+            data=data,
+            files=files,
+            headers=headers or self._headers(),
+            timeout=60.0,
+        )
+        payload: Any
+        if resp.headers.get("content-type", "").startswith("application/json"):
+            payload = resp.json()
+        else:
+            payload = resp.content
+        return resp.status_code, payload
 
     # -- sessions -----------------------------------------------------------
 

@@ -26,6 +26,9 @@ class Settings:
     mistral_api_key: str = _get("MISTRAL_API_KEY")
     mistral_model_main: str = _get("MISTRAL_MODEL_MAIN", "mistral-large-4")
     mistral_model_fallback: str = _get("MISTRAL_MODEL_FALLBACK", "mistral-small-2603")
+    # live voice turns (latency): defaults to the main model; set to
+    # MISTRAL_MODEL_FALLBACK to trade quality for lower end-of-speech latency
+    voice_agent_model: str = _get("VOICE_AGENT_MODEL") or mistral_model_main
     mistral_moderation_model: str = _get("MISTRAL_MODERATION_MODEL", "mistral-moderation-2603")
     mistral_embed_model: str = _get("MISTRAL_EMBED_MODEL", "mistral-embed")
     voxtral_stt_realtime_model: str = _get("VOXTRAL_STT_REALTIME_MODEL", "voxtral-mini-transcribe-realtime-3-0")

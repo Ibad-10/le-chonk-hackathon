@@ -32,7 +32,7 @@ class FakeLLM:
         self.language = language
         self.agent_calls: list[dict] = []
 
-    def _next_turn(self, model, system, messages, tools, reasoning_effort):
+    def _next_turn(self, model, system, messages, tools, reasoning_effort, max_tokens=None):
         self.agent_calls.append(
             {
                 "model": model,
@@ -40,6 +40,7 @@ class FakeLLM:
                 "messages": [dict(m) for m in messages],
                 "tools": tools,
                 "reasoning_effort": reasoning_effort,
+                "max_tokens": max_tokens,
             }
         )
         resp = self.responses.pop(0) if len(self.responses) > 1 else self.responses[0]
@@ -58,11 +59,11 @@ class FakeLLM:
             return schema.model_validate({"language": self.language})
         raise AssertionError("unexpected json call")
 
-    async def chat(self, model, system, messages, tools, reasoning_effort, timeout_s):
-        return self._next_turn(model, system, messages, tools, reasoning_effort)
+    async def chat(self, model, system, messages, tools, reasoning_effort, timeout_s, max_tokens=None):
+        return self._next_turn(model, system, messages, tools, reasoning_effort, max_tokens)
 
-    async def stream_chat(self, model, system, messages, tools, reasoning_effort, timeout_s, on_chunk):
-        turn = self._next_turn(model, system, messages, tools, reasoning_effort)
+    async def stream_chat(self, model, system, messages, tools, reasoning_effort, timeout_s, on_chunk, max_tokens=None):
+        turn = self._next_turn(model, system, messages, tools, reasoning_effort, max_tokens)
         if turn.content:
             await on_chunk(turn.content)
         return turn
@@ -194,3 +195,40 @@ async def test_stt_uses_batch_model_from_config(api_key, monkeypatch):
     stt_call = next(c for c in post.calls if c["path"].endswith("/audio/transcriptions"))
     assert stt_call["data"]["model"] == "voxtral-test-stt"
     assert stt_call["files"] is not None
+
+
+async def test_voice_turn_uses_voice_agent_model_and_max_tokens_300():
+    """Latency fix: voice-channel agent turns run on VOICE_AGENT_MODEL (default
+    MISTRAL_MODEL_MAIN) at low effort with max_tokens=300."""
+    from app.runs import RunService as _RS
+
+    llm = FakeLLM()
+    svc = _RS(llm, now_fn=lambda: 1000.0)
+    run = svc.start_run(agent_id="bank-ava", channel="voice", mode="ladder")
+    await svc.send_message(run.id, "what is my balance?")
+    call = llm.agent_calls[-1]
+    assert call["model"] == settings.voice_agent_model
+    assert call["model"] == settings.mistral_model_main  # default when VOICE_AGENT_MODEL unset
+    assert call["max_tokens"] == 300
+    assert call["reasoning_effort"] == "low"
+
+
+async def test_text_turn_uses_main_model_and_no_max_tokens_override():
+    from app.runs import RunService as _RS
+
+    llm = FakeLLM()
+    svc = _RS(llm, now_fn=lambda: 1000.0)
+    run = svc.start_run(agent_id="bank-ava", channel="text", mode="ladder")
+    await svc.send_message(run.id, "hello")
+    call = llm.agent_calls[-1]
+    assert call["model"] == settings.mistral_model_main
+    assert call["max_tokens"] is None
+
+
+def test_mistral_http_client_is_one_shared_pool():
+    """Latency fix: all Mistral HTTP calls reuse one AsyncClient/connection pool."""
+    from app.voice import mistral_http_client
+
+    c1 = mistral_http_client()
+    assert mistral_http_client() is c1
+    assert not c1.is_closed

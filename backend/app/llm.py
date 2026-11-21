@@ -72,6 +72,7 @@ class LLMClient(Protocol):
         tools: list[dict[str, Any]],
         reasoning_effort: str | None,
         timeout_s: float,
+        max_tokens: int | None = None,
     ) -> ChatTurn:
         """One native-function-calling turn (no response_format): plain-text
         content and/or parsed tool calls."""
@@ -88,6 +89,7 @@ class LLMClient(Protocol):
         reasoning_effort: str | None,
         timeout_s: float,
         on_chunk: Callable[[str], Awaitable[None]],
+        max_tokens: int | None = None,
     ) -> ChatTurn:
         """Streaming variant of `chat`: each plain-text delta goes to
         `on_chunk`; tool-call deltas are accumulated and parsed at the end."""
@@ -147,6 +149,7 @@ class MistralLLM:
         messages: list[dict[str, Any]],
         reasoning_effort: str | None,
         timeout_s: float,
+        max_tokens: int | None = None,
     ) -> dict[str, Any]:
         request: dict[str, Any] = {
             "model": model,
@@ -161,6 +164,9 @@ class MistralLLM:
         elif reasoning_effort == "low":
             # cap output tokens: without this the model spends the budget thinking
             request["max_tokens"] = 800
+        if max_tokens is not None:
+            # explicit cap (live voice turns) wins over the per-effort default
+            request["max_tokens"] = max_tokens
         return request
 
     def _request(
@@ -193,10 +199,11 @@ class MistralLLM:
         tools: list[dict[str, Any]],
         reasoning_effort: str | None,
         timeout_s: float,
+        max_tokens: int | None = None,
     ) -> dict[str, Any]:
         """Native function calling: `tools`, and NO response_format, so the
         model's text content stays plain prose (no JSON wrapper in the stream)."""
-        request = self._base_request(model, system, messages, reasoning_effort, timeout_s)
+        request = self._base_request(model, system, messages, reasoning_effort, timeout_s, max_tokens)
         request["tools"] = tools
         return request
 
@@ -277,10 +284,11 @@ class MistralLLM:
         tools: list[dict[str, Any]],
         reasoning_effort: str | None,
         timeout_s: float,
+        max_tokens: int | None = None,
     ) -> ChatTurn:
         from mistralai.client.errors import MistralError
 
-        request = self._tool_request(model, system, messages, tools, reasoning_effort, timeout_s)
+        request = self._tool_request(model, system, messages, tools, reasoning_effort, timeout_s, max_tokens)
         try:
             response = await self._client.chat.complete_async(**request)
         except MistralError as exc:
@@ -304,10 +312,11 @@ class MistralLLM:
         reasoning_effort: str | None,
         timeout_s: float,
         on_chunk: Callable[[str], Awaitable[None]],
+        max_tokens: int | None = None,
     ) -> ChatTurn:
         from mistralai.client.errors import MistralError
 
-        request = self._tool_request(model, system, messages, tools, reasoning_effort, timeout_s)
+        request = self._tool_request(model, system, messages, tools, reasoning_effort, timeout_s, max_tokens)
 
         async def _stream(req: dict[str, Any]) -> ChatTurn:
             pieces: list[str] = []
