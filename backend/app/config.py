@@ -21,6 +21,18 @@ def _get(name: str, default: str = "") -> str:
     return os.environ.get(name, default)
 
 
+def _origins(name: str, default: str = "") -> list[str]:
+    """Comma-separated origins/patterns: whitespace, stray quotes and trailing
+    slashes are stripped (an origin never ends in "/", Clerk's `azp` neither)."""
+    items = (p.strip().strip("\"'").strip().rstrip("/") for p in _get(name, default).split(","))
+    return [p for p in items if p]
+
+
+# Vercel preview deployments of the frontend (full match). No commas allowed
+# inside a pattern: the setting is comma-separated.
+DEFAULT_ORIGIN_PATTERNS = r"https://red-room-[a-z0-9-]+-ibads-projects-ed29cb6a\.vercel\.app"
+
+
 class Settings:
     # Mistral (all AI in the product is Mistral; IDs come from env, never hard-coded)
     mistral_api_key: str = _get("MISTRAL_API_KEY")
@@ -52,9 +64,12 @@ class Settings:
     next_public_clerk_publishable_key: str = _get("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY")
     clerk_secret_key: str = _get("CLERK_SECRET_KEY")
     # comma-separated allowed `azp` (authorized party) claim values
-    clerk_authorized_parties: list[str] = [
-        p for p in _get("CLERK_AUTHORIZED_PARTIES", "http://localhost:3000").split(",") if p
-    ]
+    clerk_authorized_parties: list[str] = _origins("CLERK_AUTHORIZED_PARTIES", "http://localhost:3000")
+    # regexes (full match) for further allowed `azp` values / CORS origins
+    clerk_authorized_party_patterns: list[str] = _origins(
+        "CLERK_AUTHORIZED_PARTY_PATTERNS", DEFAULT_ORIGIN_PATTERNS
+    )
+    cors_origins: list[str] = _origins("CORS_ORIGINS", "http://localhost:3000")
 
     # Run limits (v4)
     run_voice_s: float = float(_get("RUN_VOICE_S", "300"))

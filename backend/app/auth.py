@@ -19,6 +19,7 @@ ADMIN_PLAYER_IDS).
 from __future__ import annotations
 
 import base64
+import re
 from typing import Any, Awaitable, Callable
 
 import httpx
@@ -30,6 +31,17 @@ from app.config import settings
 from app.db import Agent, Player
 
 JWKS_PATH = "/.well-known/jwks.json"
+SIGN_IN_AGAIN = "please sign in again"
+CLOCK_LEEWAY_S = 60  # backend laptop clock vs Clerk: nbf/iat/exp skew tolerance
+
+
+def _rejected(reason: str) -> HTTPException:
+    """401 with a detail the UI can show as-is ("...: please sign in again")."""
+    return HTTPException(status_code=401, detail=f"{reason}: {SIGN_IN_AGAIN}")
+
+
+def _norm_origin(origin: str) -> str:
+    return origin.strip().rstrip("/")
 
 
 def frontend_api_host(publishable_key: str) -> str:
@@ -55,13 +67,19 @@ class ClerkAuth:
         publishable_key: str | None = None,
         fetcher: Callable[[], Awaitable[dict[str, Any]]] | None = None,
         authorized_parties: list[str] | None = None,
+        authorized_party_patterns: list[str] | None = None,
     ) -> None:
         self.publishable_key = publishable_key or settings.next_public_clerk_publishable_key
         self._host = frontend_api_host(self.publishable_key) if self.publishable_key else ""
         self._fetcher = fetcher or self._fetch_jwks
-        self._authorized_parties = (
-            authorized_parties if authorized_parties is not None else settings.clerk_authorized_parties
+        parties = authorized_parties if authorized_parties is not None else settings.clerk_authorized_parties
+        self._authorized_parties = {_norm_origin(p) for p in parties}
+        patterns = (
+            authorized_party_patterns
+            if authorized_party_patterns is not None
+            else settings.clerk_authorized_party_patterns
         )
+        self._party_patterns = [re.compile(p) for p in patterns]
         self._jwks: dict[str, Any] | None = None
 
     @property
@@ -74,21 +92,34 @@ class ClerkAuth:
             resp.raise_for_status()
             return resp.json()
 
-    async def jwks(self) -> dict[str, Any]:
-        if self._jwks is None:
+    async def jwks(self, refresh: bool = False) -> dict[str, Any]:
+        if self._jwks is None or refresh:
             self._jwks = await self._fetcher()
         return self._jwks
+
+    def party_allowed(self, azp: str) -> bool:
+        """Exact match (trailing slash / whitespace ignored) against
+        CLERK_AUTHORIZED_PARTIES, or a full match of a pattern (previews)."""
+        origin = _norm_origin(azp)
+        return origin in self._authorized_parties or any(
+            p.fullmatch(origin) for p in self._party_patterns
+        )
 
     async def verify(self, token: str) -> dict[str, Any]:
         """Verify signature + exp; returns the claims. Raises 401 otherwise."""
         try:
             header = jwt.get_unverified_header(token)
-        except jwt.PyJWTError as exc:
-            raise HTTPException(status_code=401, detail=f"malformed token: {exc}")
-        keys = (await self.jwks()).get("keys", [])
-        jwk = next((k for k in keys if k.get("kid") == header.get("kid")), None)
+        except jwt.PyJWTError:
+            raise _rejected("malformed session token")
+
+        def _find(jwks: dict[str, Any]) -> dict[str, Any] | None:
+            return next((k for k in jwks.get("keys", []) if k.get("kid") == header.get("kid")), None)
+
+        jwk = _find(await self.jwks())
+        if jwk is None:  # Clerk rotated its keys since the JWKS was cached
+            jwk = _find(await self.jwks(refresh=True))
         if jwk is None:
-            raise HTTPException(status_code=401, detail="unknown signing key")
+            raise _rejected("session token signed by an unknown key")
         key = jwt.algorithms.RSAAlgorithm.from_jwk(jwk)
         try:
             claims = jwt.decode(
@@ -96,9 +127,12 @@ class ClerkAuth:
                 key,
                 algorithms=["RS256"],
                 options={"require": ["exp", "sub"]},  # exp checked by default
+                leeway=CLOCK_LEEWAY_S,
             )
-        except jwt.PyJWTError as exc:
-            raise HTTPException(status_code=401, detail=f"invalid session token: {exc}")
+        except jwt.ExpiredSignatureError:
+            raise _rejected("session token expired")
+        except jwt.PyJWTError:
+            raise _rejected("invalid session token")
         # v4.1 review: a present `azp` (authorized party) must be one we allow.
         # Clerk docs: azp is the Origin of the original Frontend API request and
         # "could be omitted if Origin is empty or null" — server-minted session
@@ -107,13 +141,10 @@ class ClerkAuth:
         # blanket no-azp pass.
         azp = claims.get("azp")
         if azp is not None:
-            if azp not in self._authorized_parties:
-                raise HTTPException(status_code=401, detail="azp not in CLERK_AUTHORIZED_PARTIES")
+            if not isinstance(azp, str) or not self.party_allowed(azp):
+                raise _rejected("session token origin (azp) not in CLERK_AUTHORIZED_PARTIES")
         elif not claims.get("sid") or claims.get("iss") != f"https://{self._host}":
-            raise HTTPException(
-                status_code=401,
-                detail="token has no azp and is not a session token of this instance",
-            )
+            raise _rejected("token has no azp and is not a session token of this instance")
         return claims
 
 
@@ -134,8 +165,21 @@ async def current_player(
     """Write-route dependency: verify the Clerk session token and upsert the
     player keyed by the Clerk user id (`sub`)."""
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="missing bearer token")
+        raise _rejected("missing bearer token")
     return await player_for_token(request, authorization[len("Bearer ") :].strip())
+
+
+async def optional_player(
+    request: Request, authorization: str | None = Header(default=None)
+) -> Player | None:
+    """Public reads that show more to the owner (private agents): the verified
+    player, or None when there is no valid token."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    try:
+        return await player_for_token(request, authorization[len("Bearer ") :].strip())
+    except HTTPException:
+        return None
 
 
 async def stream_player(
@@ -148,7 +192,7 @@ async def stream_player(
     if authorization and authorization.startswith("Bearer "):
         token = authorization[len("Bearer ") :].strip()
     if not token:
-        raise HTTPException(status_code=401, detail="missing bearer token")
+        raise _rejected("missing bearer token")
     return await player_for_token(request, token)
 
 

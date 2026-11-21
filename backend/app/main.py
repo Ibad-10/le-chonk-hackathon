@@ -7,13 +7,13 @@ runs are persisted through SQLiteRunsRepo.
 
 from __future__ import annotations
 
-import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth import ClerkAuth
+from app.config import settings
 from app.creator import PlacementService
 from app.db import init_db, make_engine, seed_house_agents
 from app.improvement import RetestService
@@ -48,16 +48,18 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Red Room", lifespan=lifespan)
 
-# Allowed browser origins, comma-separated (deployed frontend + local dev).
-_cors_origins = [
-    o.strip()
-    for o in os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
-    if o.strip()
-]
+
+def cors_origin_regex() -> str | None:
+    """One regex (Starlette full-matches it) from CLERK_AUTHORIZED_PARTY_PATTERNS."""
+    patterns = settings.clerk_authorized_party_patterns
+    return "|".join(f"(?:{p})" for p in patterns) if patterns else None
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_origins,
+    # CORS_ORIGINS plus the Clerk authorized parties (both are the frontend's
+    # origins), and the same preview-deployment patterns as the azp check
+    allow_origins=sorted(set(settings.cors_origins) | set(settings.clerk_authorized_parties)),
+    allow_origin_regex=cors_origin_regex(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
