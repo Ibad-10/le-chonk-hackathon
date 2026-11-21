@@ -99,7 +99,9 @@ export default function Troop({
 
   return (
     <group ref={group}>
-      <GlbModel model={model} />
+      <group scale={2}>
+        <GlbModel model={model} />
+      </group>
       {squad.status === "sentBack" && (
         <group position={[0.25, 0.9, 0]}>
           <mesh>
@@ -116,7 +118,7 @@ export default function Troop({
         <Html
           position={[0, 1.5, 0]}
           center
-          distanceFactor={14}
+         
           zIndexRange={[20, 0]}
           className="pointer-events-none select-none"
         >
@@ -155,9 +157,11 @@ export function Envoy({
   });
   return (
     <group ref={group} position={[from.x, 0, from.z]}>
-      <GlbModel model={ENVOY_MODEL} />
+      <group scale={2}>
+        <GlbModel model={ENVOY_MODEL} />
+      </group>
       {text && (
-        <Html position={[0, 1.5, 0]} center distanceFactor={14} zIndexRange={[20, 0]} className="pointer-events-none select-none">
+        <Html position={[0, 1.5, 0]} center zIndexRange={[20, 0]} className="pointer-events-none select-none">
           <div className="max-w-[220px] whitespace-nowrap rounded-lg border border-room-line bg-room-panel-2/95 px-2 py-1 text-[11px] text-room-text shadow">
             {text}
           </div>

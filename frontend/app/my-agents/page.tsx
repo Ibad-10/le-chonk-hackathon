@@ -54,7 +54,7 @@ export default function MyAgentsPage() {
               </Link>
               <Link
                 href={`/agents/${a.id}/owner`}
-                className="rounded-md bg-room-red px-3 py-1.5 text-sm font-semibold text-white hover:bg-room-red-soft"
+                className="rounded-md bg-room-red px-3 py-1.5 text-sm font-semibold text-room-bg hover:bg-room-red-soft"
               >
                 Owner dashboard
               </Link>

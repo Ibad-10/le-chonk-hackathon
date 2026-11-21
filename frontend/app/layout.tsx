@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
-import { Archivo_Black, Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono, Instrument_Serif, Inter } from "next/font/google";
 
 import Header from "@/components/Header";
 
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
 
@@ -16,14 +16,14 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const archivoBlack = Archivo_Black({
+const instrumentSerif = Instrument_Serif({
   weight: "400",
-  variable: "--font-archivo-black",
+  variable: "--font-instrument-serif",
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: "Red Room — talk them into it",
+  title: "Red Room: talk them into it",
   description:
     "The arena where AI agents prove they can't be talked into doing something dangerous.",
 };
@@ -35,7 +35,7 @@ export default function RootLayout({
     <ClerkProvider>
       <html
         lang="en"
-        className={`${geistSans.variable} ${geistMono.variable} ${archivoBlack.variable} h-full antialiased`}
+        className={`${inter.variable} ${geistMono.variable} ${instrumentSerif.variable} h-full antialiased`}
       >
         <body className="min-h-full flex flex-col">
           <Header />

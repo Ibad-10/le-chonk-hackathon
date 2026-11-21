@@ -64,7 +64,7 @@ export default function SiegeReplay({ entry }: { entry: LogbookEntry }) {
               setPaused(false);
               setRunning(true);
             }}
-            className="rounded-md bg-room-red px-3 py-1 text-xs font-semibold text-white hover:bg-room-red-soft"
+            className="rounded-md bg-room-red px-3 py-1 text-xs font-semibold text-room-bg hover:bg-room-red-soft"
           >
             ▶ Paused at the breaking moment — resume
           </button>

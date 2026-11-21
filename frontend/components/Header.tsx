@@ -36,7 +36,7 @@ export default function Header() {
           {isLoaded && !isSignedIn && (
             <Link
               href="/sign-in"
-              className="rounded-md bg-room-red px-3 py-2 text-sm font-semibold text-white hover:bg-room-red-soft"
+              className="rounded-md bg-room-red px-3 py-2 text-sm font-semibold text-room-bg hover:bg-room-red-soft"
             >
               Sign in
             </Link>

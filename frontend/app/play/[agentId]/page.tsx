@@ -1,15 +1,16 @@
 "use client";
 
 import { Suspense, use, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
+import { ChevronDown, Flag, MessageSquare, Phone, ScrollText, Send } from "lucide-react";
 
 import Siege from "@/components/Siege";
+import { BreachMeter, MessagePips, RaidResult, breachPercent } from "@/components/raid";
 import CallPanel from "@/components/voice/CallPanel";
 import { usePrefersReducedMotion } from "@/components/base/usePrefersReducedMotion";
-import MessageCounter, { useMessageLimit } from "@/components/MessageCounter";
+import { useMessageLimit } from "@/components/MessageCounter";
 import TimerRing from "@/components/TimerRing";
 import { endRun, getAgent, getRoleBrief, startRun, streamMessage } from "@/lib/api";
 
@@ -30,7 +31,7 @@ const LiveBase = dynamic(() => import("@/components/base/LiveBase"), {
   loading: () => <p className="p-8 text-room-muted">Raising the base…</p>,
 });
 
-type PlayView = "base" | "siege" | "chat";
+type PlayView = "base" | "siege";
 
 /** WebGL available? (the 3D base needs it; Siege is the lightweight fallback) */
 function webglAvailable(): boolean {
@@ -86,6 +87,7 @@ function PlayPageInner({ agentId }: { agentId: string }) {
   // Base (3D) is the default view; Siege is the lightweight view and the
   // automatic fallback when WebGL is unavailable or reduced motion is set.
   const [view, setView] = useState<PlayView>("base");
+  const [channel, setChannel] = useState<"chat" | "call">("chat");
   const reducedMotion = usePrefersReducedMotion();
   const [baseEvents, setBaseEvents] = useState<BaseEvent[]>([]);
   const [siegeEvents, setSiegeEvents] = useState<SiegeEvent[]>([]);
@@ -94,6 +96,7 @@ function PlayPageInner({ agentId }: { agentId: string }) {
   const [error, setError] = useState<string | null>(null);
   const limit = useMessageLimit(MAX_PLAYER_MESSAGES);
   const runIdRef = useRef<string | null>(null);
+  const streamedRef = useRef("");
   runIdRef.current = runId;
 
   // end-of-run banner for the base (stars / conquest / defended / treaty / helped)
@@ -190,12 +193,16 @@ function PlayPageInner({ agentId }: { agentId: string }) {
     // provides it; until then the siege falls back to a keyword heuristic
     setSiegeEvents((e) => [...e, { type: "playerMessage", text, tactic: null }]);
     setStreaming("");
+    streamedRef.current = "";
     const token = isSignedIn ? await getToken() : null;
     await streamMessage(
       id,
       text,
       {
-        onChunk: (piece) => setStreaming((s) => s + piece),
+        onChunk: (piece) => {
+          streamedRef.current += piece;
+          setStreaming(streamedRef.current);
+        },
         onDone: (event) => {
           // live base beats: envoy / sent back / defeated, read tools, risky tools
           setBaseEvents((e) => [
@@ -230,13 +237,10 @@ function PlayPageInner({ agentId }: { agentId: string }) {
               ? [{ type: "runEnded", outcome: event.outcome ?? "block" } as SiegeEvent]
               : []),
           ]);
-          setStreaming((s) => {
-            setMessages((m) => [
-              ...m,
-              { role: "agent", content: event.reply ?? s },
-            ]);
-            return "";
-          });
+          // append outside the state updater: updaters run twice in dev (StrictMode)
+          const reply = event.reply ?? streamedRef.current;
+          setMessages((m) => [...m, { role: "agent", content: reply }]);
+          setStreaming("");
           setSending(false);
           if (event.ended) void finish();
         },
@@ -252,239 +256,190 @@ function PlayPageInner({ agentId }: { agentId: string }) {
     );
   }
 
-  const viewButton = (v: PlayView, label: string) => (
-    <button
-      type="button"
-      onClick={() => setView(v)}
-      aria-pressed={view === v}
-      className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium ${
-        view === v
-          ? "border-room-red bg-room-red/15 text-room-red-soft"
-          : "border-room-line bg-room-panel-2 text-room-muted hover:text-room-text"
-      }`}
-    >
-      {label} {view === v ? "on" : "off"}
-    </button>
-  );
+  const breach = breachPercent(baseEvents);
+  const missionTitle = brief?.role === "genuine" ? "Your brief" : "Your mission";
 
   return (
-    <div className="mx-auto grid w-full max-w-6xl gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[280px_1fr]">
-      <aside className="space-y-4">
-        <div className="rounded-xl border border-room-line bg-room-panel p-5">
-          <h1 className="font-display text-2xl text-room-text">
-            {agent?.name ?? agentId}
-          </h1>
-          <p className="mt-1 text-sm text-room-muted">
-            {agent?.stream} stream · v{agent?.current_version} · rating{" "}
-            {agent ? Math.round(agent.rating) : "—"}
-            {practice && (
-              <span className="ml-2 rounded border border-room-line px-1.5 py-0.5 text-xs text-room-muted">
-                practice — no Elo
-              </span>
-            )}
-          </p>
-          <div className="mt-4 flex items-center justify-between gap-3">
-            <TimerRing seconds={TEXT_RUN_SECONDS} onExpire={() => void finish()} />
-            <MessageCounter count={limit.count} max={limit.max} />
-          </div>
-          <div className="mt-4 flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={() => void finish()}
-              disabled={!!result}
-              className="rounded-md bg-room-red px-4 py-2 text-sm font-semibold text-white hover:bg-room-red-soft disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              End run
-            </button>
-            <div className="flex gap-2" role="group" aria-label="View">
-              {viewButton("base", "🏰 Base")}
-              {viewButton("siege", "⚔️ Siege")}
-              {viewButton("chat", "💬 Chat")}
-            </div>
-          </div>
-        </div>
-
-        <CallPanel
-          agentId={agentId}
-          agentName={agent?.name ?? "the agent"}
-          getToken={isSignedIn ? getToken : undefined}
-        />
-
-        {brief && (
-          <div className="rounded-xl border border-room-line bg-room-panel p-5">
-            <h2 className="font-display text-sm uppercase tracking-wide text-room-red-soft">
-              {brief.role === "scammer" ? "Your mission" : "Your brief"}
-            </h2>
-            {brief.role === "scammer" ? (
-              <div className="mt-2 space-y-2 text-sm text-room-text">
-                <p>{brief.mission}</p>
-                <p className="text-xs uppercase tracking-wide text-room-muted">
-                  Public dossier
-                </p>
-                <ul className="list-disc space-y-1 pl-4 text-room-muted">
-                  {brief.dossier.map((d) => (
-                    <li key={d}>{d}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : (
-              <div className="mt-2 space-y-2 text-sm text-room-text">
-                <p>{brief.need}</p>
-                <p className="text-xs uppercase tracking-wide text-room-muted">
-                  Your details (for verification)
-                </p>
-                <ul className="list-disc space-y-1 pl-4 text-room-muted">
-                  {brief.details.map((d) => (
-                    <li key={d}>{d}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-      </aside>
-
-      {view === "siege" && (
-        <div className="lg:col-span-2">
-          <Siege
-            events={siegeEvents}
-            messagesRemaining={limit.remaining}
-            maxMessages={limit.max}
-            secondsLeft={secondsLeft}
-          />
-        </div>
-      )}
-
-      <div className={view === "base" ? "relative lg:grid lg:grid-cols-[1fr_360px] lg:items-start lg:gap-4" : ""}>
-        {view === "base" && (
+    <div className="relative h-[calc(100dvh-4rem)] w-full overflow-hidden bg-room-bg">
+      {/* the stage: 3D village, or the 2D Siege when WebGL / motion is unavailable */}
+      <div className="absolute inset-x-0 bottom-[44%] top-0 lg:bottom-0 lg:right-[410px]">
+        {view === "base" ? (
           <LiveBase
             agentId={agentId}
             stream={agent?.stream ?? "banking"}
             events={baseEvents}
-            height="58vh"
+            height="100%"
           />
-        )}
-
-      <section
-        aria-label="Chat"
-        className={`flex flex-col rounded-xl border border-room-line bg-room-panel ${
-          view === "base"
-            ? "min-h-[38vh] max-lg:absolute max-lg:inset-x-2 max-lg:bottom-2 max-lg:max-h-[52%] max-lg:bg-room-panel/95 max-lg:shadow-xl"
-            : "min-h-[60vh]"
-        }`}
-      >
-        <div className="flex-1 space-y-3 overflow-y-auto p-5">
-          {messages.length === 0 && !streaming && (
-            <p className="text-sm text-room-muted">
-              Say something to {agent?.name ?? "the agent"}…
-            </p>
-          )}
-          {messages.map((m, i) => (
-            <div
-              key={i}
-              className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
-                m.role === "player"
-                  ? "ml-auto bg-room-red text-white"
-                  : "mr-auto bg-room-panel-2 text-room-text"
-              }`}
-            >
-              {m.content}
-            </div>
-          ))}
-          {/* ARIA live region for the streamed agent reply */}
-          <div aria-live="polite" className="min-h-6">
-            {streaming && (
-              <div className="mr-auto max-w-[80%] rounded-lg bg-room-panel-2 px-3 py-2 text-sm text-room-text">
-                {streaming}
-                <span aria-hidden="true">▌</span>
-              </div>
-            )}
+        ) : (
+          <div className="h-full overflow-auto px-3 pb-4 pt-28">
+            <Siege
+              events={siegeEvents}
+              messagesRemaining={limit.remaining}
+              maxMessages={limit.max}
+              secondsLeft={secondsLeft}
+            />
           </div>
-        </div>
-        <form
-          className="flex gap-2 border-t border-room-line p-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void send();
-          }}
-        >
-          <label htmlFor="chat-input" className="sr-only">
-            Message
-          </label>
-          <input
-            id="chat-input"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            disabled={sending || !!result || !limit.canSend}
-            placeholder={
-              limit.canSend ? "Talk them into it…" : "Message limit reached"
-            }
-            className="flex-1 rounded-md border border-room-line bg-room-bg px-3 py-2 text-sm text-room-text placeholder:text-room-muted"
-          />
-          <button
-            type="submit"
-            disabled={sending || !draft.trim() || !!result || !limit.canSend}
-            className="rounded-md bg-room-red px-4 py-2 text-sm font-semibold text-white hover:bg-room-red-soft disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Send
-          </button>
-        </form>
-      </section>
+        )}
       </div>
 
-      {result && (
-        <section
-          aria-label="Result"
-          className="rounded-xl border border-room-red/70 bg-room-panel p-5 lg:col-span-2"
-        >
-          <h2 className="font-display text-2xl text-room-text">
-            {result.outcome === "win"
-              ? "🔴 You broke it"
-              : result.outcome === "no_contest"
-                ? "No contest"
-                : result.helpfulness
-                  ? "Helpfulness loss"
-                  : "The agent held"}
-          </h2>
-          <p className="mt-2 text-room-muted">{outcomeLabel(result)}</p>
-          {baseBanner && (
-            <div className="mt-3 flex items-center gap-3">
-              {baseBanner.stars !== null && (
-                <span
-                  className="font-display text-3xl tracking-widest text-room-red-soft"
-                  aria-label={`${baseBanner.stars} stars`}
-                >
-                  {"★".repeat(baseBanner.stars)}
-                  <span className="text-room-line">{"★".repeat(3 - baseBanner.stars)}</span>
-                </span>
-              )}
-              <span className="text-sm font-semibold text-room-text">{baseBanner.label}</span>
-            </div>
-          )}
-          <p className="mt-3 font-mono text-sm text-room-text">
-            +{result.points} points · Elo{" "}
-            {result.elo_delta >= 0 ? "+" : ""}
-            {result.elo_delta}
-          </p>
-          <div className="mt-4 flex gap-3">
-            <button
-              type="button"
-              onClick={() => router.push("/")}
-              className="rounded-md border border-room-line bg-room-panel-2 px-4 py-2 text-sm font-semibold text-room-text"
-            >
-              Back to arena
-            </button>
-            <Link
-              href="/leaderboard"
-              className="rounded-md border border-room-line bg-room-panel-2 px-4 py-2 text-sm font-semibold text-room-text"
-            >
-              Leaderboard
-            </Link>
+      {/* HUD */}
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-wrap items-start justify-between gap-2 p-2 sm:p-4">
+        <div className="pointer-events-auto flex items-center gap-3 rounded-xl border border-room-line bg-room-panel/90 px-3 py-2 shadow-lg backdrop-blur sm:gap-4 sm:px-4">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-room-muted">
+              {practice ? "Practice raid" : "Raiding"}
+            </p>
+            <h1 className="font-display text-2xl leading-none text-room-text sm:text-3xl">
+              {agent?.name ?? agentId}
+            </h1>
+            <p className="mt-1 font-mono text-xs text-room-muted">
+              {agent?.stream ?? "…"} · v{agent?.current_version ?? "?"} · {agent ? Math.round(agent.rating) : "—"} Elo
+            </p>
           </div>
-        </section>
+          <TimerRing seconds={TEXT_RUN_SECONDS} onExpire={() => void finish()} />
+        </div>
+        <div className="pointer-events-auto flex items-center gap-4 rounded-xl border border-room-line bg-room-panel/90 px-3 py-2 shadow-lg backdrop-blur sm:gap-5 sm:px-4">
+          <BreachMeter events={baseEvents} />
+          <div className="hidden sm:block">
+            <MessagePips used={limit.count} max={limit.max} />
+          </div>
+          <button
+            type="button"
+            onClick={() => void finish()}
+            disabled={!!result}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-danger/60 px-3 py-2 text-sm font-semibold text-danger-soft hover:bg-danger-bg disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Flag size={16} aria-hidden="true" /> End raid
+          </button>
+        </div>
+      </header>
+
+      {/* comms: chat or voice call; right column on desktop, bottom sheet on phones */}
+      <section
+        aria-label="Comms"
+        className="absolute inset-x-2 bottom-2 z-20 flex max-h-[46%] flex-col overflow-hidden rounded-xl border border-room-line bg-room-panel/95 shadow-2xl backdrop-blur lg:inset-x-auto lg:bottom-4 lg:right-4 lg:top-32 lg:max-h-none lg:w-[390px]"
+      >
+        {brief && (
+          <details open={messages.length === 0} className="group border-b border-room-line">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-2.5">
+              <span className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-room-red-soft">
+                <ScrollText size={14} aria-hidden="true" /> {missionTitle}
+              </span>
+              <ChevronDown size={16} aria-hidden="true" className="text-room-muted transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="max-h-48 space-y-2 overflow-y-auto px-4 pb-3 text-sm text-room-text">
+              <p>{brief.role === "scammer" ? brief.mission : brief.need}</p>
+              <p className="text-[11px] uppercase tracking-wider text-room-muted">
+                {brief.role === "scammer" ? "Public dossier" : "Your details (for verification)"}
+              </p>
+              <ul className="list-disc space-y-0.5 pl-4 text-room-muted">
+                {(brief.role === "scammer" ? brief.dossier : brief.details).map((d) => (
+                  <li key={d}>{d}</li>
+                ))}
+              </ul>
+            </div>
+          </details>
+        )}
+
+        <div className="flex gap-1 border-b border-room-line p-1.5" role="tablist" aria-label="Channel">
+          {(["chat", "call"] as const).map((c) => (
+            <button
+              key={c}
+              type="button"
+              role="tab"
+              aria-selected={channel === c}
+              onClick={() => setChannel(c)}
+              className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold ${
+                channel === c ? "bg-room-panel-2 text-room-text" : "text-room-muted hover:text-room-text"
+              }`}
+            >
+              {c === "chat" ? <MessageSquare size={15} aria-hidden="true" /> : <Phone size={15} aria-hidden="true" />}
+              {c === "chat" ? "Chat" : "Call"}
+            </button>
+          ))}
+        </div>
+
+        {channel === "call" ? (
+          <div className="overflow-y-auto p-3 [&>div]:max-w-none">
+            <CallPanel
+              agentId={agentId}
+              agentName={agent?.name ?? "the agent"}
+              getToken={isSignedIn ? getToken : undefined}
+            />
+          </div>
+        ) : (
+          <>
+            <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto p-4">
+              {messages.length === 0 && !streaming && (
+                <p className="text-sm text-room-muted">
+                  Every message sends a troop at the base. Talk {agent?.name ?? "the agent"} into it.
+                </p>
+              )}
+              {messages.map((m, i) => (
+                <div
+                  key={i}
+                  className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${
+                    m.role === "player"
+                      ? "ml-auto rounded-br-sm bg-room-red text-room-bg"
+                      : "mr-auto rounded-bl-sm bg-room-panel-2 text-room-text"
+                  }`}
+                >
+                  {m.content}
+                </div>
+              ))}
+              {/* ARIA live region for the streamed agent reply */}
+              <div aria-live="polite" className="min-h-6">
+                {streaming && (
+                  <div className="mr-auto max-w-[85%] rounded-xl rounded-bl-sm bg-room-panel-2 px-3 py-2 text-sm text-room-text">
+                    {streaming}
+                    <span aria-hidden="true" className="animate-pulse">|</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            <form
+              className="flex gap-2 border-t border-room-line p-2.5"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void send();
+              }}
+            >
+              <label htmlFor="chat-input" className="sr-only">
+                Message
+              </label>
+              <input
+                id="chat-input"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                disabled={sending || !!result || !limit.canSend}
+                placeholder={limit.canSend ? "Talk them into it…" : "Message limit reached"}
+                className="min-w-0 flex-1 rounded-lg border border-room-line bg-room-bg px-3 py-2.5 text-sm text-room-text placeholder:text-room-muted focus:border-room-red/70"
+              />
+              <button
+                type="submit"
+                aria-label="Send troop"
+                disabled={sending || !draft.trim() || !!result || !limit.canSend}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-room-red px-4 py-2.5 text-sm font-bold text-room-bg hover:bg-room-red-soft disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Send size={16} aria-hidden="true" />
+                <span className="hidden sm:inline">Send</span>
+              </button>
+            </form>
+          </>
+        )}
+      </section>
+
+      {result && (
+        <RaidResult
+          banner={baseBanner}
+          result={result}
+          breach={breach}
+          detail={outcomeLabel(result)}
+          onPlayAgain={() => window.location.reload()}
+        />
       )}
       {error && (
-        <p role="alert" className="text-sm text-room-red-soft lg:col-span-2">
+        <p role="alert" className="absolute bottom-3 left-3 z-30 rounded-lg bg-danger-bg px-3 py-2 text-sm text-danger-soft">
           {error}
         </p>
       )}

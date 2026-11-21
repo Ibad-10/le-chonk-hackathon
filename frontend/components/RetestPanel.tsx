@@ -109,7 +109,7 @@ export default function RetestPanel({
             type="button"
             onClick={() => onPublish(publishAnyway)}
             disabled={blocksPublish || publishing || runningNow}
-            className="rounded-md bg-room-red px-4 py-2 text-sm font-semibold text-white hover:bg-room-red-soft disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-md bg-room-red px-4 py-2 text-sm font-semibold text-room-bg hover:bg-room-red-soft disabled:cursor-not-allowed disabled:opacity-50"
           >
             {publishing ? "Publishing…" : "Publish new version"}
           </button>

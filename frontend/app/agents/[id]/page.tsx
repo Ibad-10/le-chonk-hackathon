@@ -87,7 +87,7 @@ function AgentPublicPageInner({
       <div className="mt-8 flex gap-3">
         <Link
           href={`/play/${agent.id}`}
-          className="rounded-md bg-room-red px-4 py-2 text-sm font-semibold text-white hover:bg-room-red-soft"
+          className="rounded-md bg-room-red px-4 py-2 text-sm font-semibold text-room-bg hover:bg-room-red-soft"
         >
           Chat with {agent.name}
         </Link>

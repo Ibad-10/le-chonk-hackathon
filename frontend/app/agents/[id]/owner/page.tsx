@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "@clerk/nextjs";
+import { Play, TriangleAlert, X } from "lucide-react";
 
 import RetestPanel from "@/components/RetestPanel";
 import SiegeReplay from "@/components/SiegeReplay";
@@ -121,9 +122,13 @@ function LogbookSection({
                   setReplayEntryId((cur) => (cur === entry.id ? null : entry.id))
                 }
                 aria-pressed={replayEntryId === entry.id}
-                className="rounded-md border border-room-line bg-room-panel px-3 py-1 text-xs font-semibold text-room-text hover:border-room-red/70"
+                className="inline-flex items-center gap-1.5 rounded-md border border-room-line bg-room-panel px-3 py-1 text-xs font-semibold text-room-text hover:border-room-red/70"
               >
-                {replayEntryId === entry.id ? "✕ Close siege replay" : "▶ Replay as siege"}
+                {replayEntryId === entry.id ? (
+                  <><X size={14} aria-hidden="true" /> Close siege replay</>
+                ) : (
+                  <><Play size={14} aria-hidden="true" /> Replay as siege</>
+                )}
               </button>
               </div>
               <ol className="mt-2 space-y-1 text-sm">
@@ -135,7 +140,7 @@ function LogbookSection({
                       key={i}
                       className={
                         isBreaking
-                          ? "rounded border border-room-red bg-room-red/15 px-2 py-1 text-room-text"
+                          ? "rounded border border-danger bg-danger-bg px-2 py-1 text-room-text"
                           : "px-2 py-1 text-room-muted"
                       }
                     >
@@ -144,8 +149,8 @@ function LogbookSection({
                       </span>
                       : {t.content}
                       {isBreaking && entry.breaking_moment && (
-                        <span className="mt-1 block text-xs font-semibold text-room-red-soft">
-                          ⚠ breaking moment — {entry.breaking_moment.reason}
+                        <span className="mt-1 flex items-center gap-1 text-xs font-semibold text-danger-soft">
+                          <TriangleAlert size={14} aria-hidden="true" /> breaking moment: {entry.breaking_moment.reason}
                         </span>
                       )}
                     </li>
@@ -158,7 +163,7 @@ function LogbookSection({
         </article>
       ))}
       <div className="rounded-xl border border-room-line bg-room-panel p-5">
-        <h3 className="font-display text-base text-room-text">
+        <h3 className="text-sm font-semibold text-room-text">
           Weakness by language
         </h3>
         <div className="mt-3">

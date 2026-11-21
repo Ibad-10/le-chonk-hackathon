@@ -43,7 +43,7 @@ export default function LeaderboardPage() {
             onClick={() => setTab(key)}
             className={`rounded-md px-4 py-2 text-sm font-semibold ${
               tab === key
-                ? "bg-room-red text-white"
+                ? "bg-room-red text-room-bg"
                 : "border border-room-line bg-room-panel text-room-muted hover:text-room-text"
             }`}
           >
