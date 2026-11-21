@@ -20,6 +20,7 @@ from app.improvement import RetestService
 from app.llm import MistralLLM
 from app.repo import SQLiteLogbookRepo, SQLiteRunsRepo
 from app.routes.agents import router as agents_router
+from app.routes.challenge import router as challenge_router
 from app.routes.owner import router as owner_router
 from app.routes.runs import router as runs_router
 from app.routes.training import router as training_router
@@ -67,6 +68,7 @@ app.include_router(agents_router)
 app.include_router(owner_router)
 app.include_router(training_router)
 app.include_router(wall_router)
+app.include_router(challenge_router)
 app.include_router(voice_router)
 app.include_router(voice_live_router)
 
