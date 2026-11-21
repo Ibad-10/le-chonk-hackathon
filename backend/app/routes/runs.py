@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from app.auth import current_player
 from app.config import settings
+from app.db import Player
 from app.models import RunChannel, RunMode
 from app.runs import NoLivesAvailable, RunNotFound, RunService
 
@@ -34,7 +36,7 @@ def get_service(request: Request) -> RunService:
 
 
 @router.post("/runs")
-async def start_run(req: StartRunRequest, request: Request):
+async def start_run(req: StartRunRequest, request: Request, player: Player = Depends(current_player)):
     service = get_service(request)
     try:
         run = service.start_run(
@@ -42,7 +44,7 @@ async def start_run(req: StartRunRequest, request: Request):
             mission_id=req.mission_id,
             channel=req.channel,
             mode=req.mode,
-            player_id=req.player_id,
+            player_id=player.id,  # v4.1: the player is the verified Clerk user
             language=req.language,
         )
     except NoLivesAvailable as exc:
@@ -56,7 +58,9 @@ async def start_run(req: StartRunRequest, request: Request):
 
 
 @router.post("/runs/{run_id}/message")
-async def send_message(run_id: str, req: MessageRequest, request: Request):
+async def send_message(
+    run_id: str, req: MessageRequest, request: Request, player: Player = Depends(current_player)
+):
     service = get_service(request)
     try:
         return await service.send_message(run_id, req.text)
@@ -85,7 +89,7 @@ async def stream_message(run_id: str, request: Request, text: str = Query(...)):
 
 
 @router.post("/runs/{run_id}/end")
-async def end_run(run_id: str, request: Request):
+async def end_run(run_id: str, request: Request, player: Player = Depends(current_player)):
     service = get_service(request)
     try:
         return service.end_run(run_id)

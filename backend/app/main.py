@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.auth import ClerkAuth
 from app.db import init_db, make_engine, seed_house_agents
 from app.llm import MistralLLM
 from app.repo import SQLiteRunsRepo
@@ -25,6 +26,7 @@ async def lifespan(app: FastAPI):
     init_db(engine)
     seed_house_agents(engine)
     app.state.db_engine = engine
+    app.state.clerk_auth = ClerkAuth()
     app.state.run_service = RunService(MistralLLM(), repo=SQLiteRunsRepo(engine))
     yield
 
