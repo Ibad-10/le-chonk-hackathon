@@ -256,6 +256,8 @@ export interface PlayerLeaderboardEntry {
   rating: number;
   wins: number;
   points: number;
+  /** Player XP for the rank badge; omitted when the backend does not send it. */
+  xp?: number;
 }
 
 export interface AgentLeaderboardEntry {

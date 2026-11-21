@@ -5,15 +5,20 @@ import { isDemoData, subscribeDemoData } from "@/lib/api";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth, UserButton } from "@clerk/nextjs";
-import { Radio, Shield, Swords, Trophy, type LucideIcon } from "lucide-react";
+import { CalendarDays, FlaskConical, Hammer, Radio, Shield, Swords, Trophy, type LucideIcon } from "lucide-react";
 
 // Two modes (Attack / Defend) plus the leaderboard and the live wall.
 const NAV: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/", label: "Attack", icon: Swords },
   { href: "/my-agents", label: "Defend", icon: Shield },
+  { href: "/challenge", label: "Daily challenge", icon: CalendarDays },
+  { href: "/create", label: "Build", icon: Hammer },
   { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
   { href: "/arena-wall", label: "Live", icon: Radio },
 ];
+
+// Signed-in only: the house agents lab.
+const LAB = { href: "/admin", label: "Lab", icon: FlaskConical };
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/" || pathname.startsWith("/play");
@@ -22,10 +27,11 @@ function isActive(pathname: string, href: string): boolean {
 }
 
 /** Nav links; `pathname` null = no active highlight (prerender fallback). */
-function NavLinks({ pathname }: { pathname: string | null }) {
+function NavLinks({ pathname, showLab }: { pathname: string | null; showLab: boolean }) {
+  const items = showLab ? [...NAV, LAB] : NAV;
   return (
     <nav aria-label="Main" className="flex flex-1 items-center gap-0.5 sm:gap-1">
-      {NAV.map(({ href, label, icon: Icon }) => {
+      {items.map(({ href, label, icon: Icon }) => {
         const active = pathname !== null && isActive(pathname, href);
         return (
           <Link
@@ -49,13 +55,14 @@ function NavLinks({ pathname }: { pathname: string | null }) {
 }
 
 // usePathname() must sit inside <Suspense> under Cache Components.
-function ActiveNav() {
-  return <NavLinks pathname={usePathname()} />;
+function ActiveNav({ showLab }: { showLab: boolean }) {
+  return <NavLinks pathname={usePathname()} showLab={showLab} />;
 }
 
 export default function Header() {
   // Clerk Core 3 removed <SignedIn>/<SignedOut>; use the useAuth hook instead
   const { isLoaded, isSignedIn } = useAuth();
+  const showLab = isLoaded && !!isSignedIn;
   const demo = useSyncExternalStore(subscribeDemoData, isDemoData, () => false);
   return (
     <header className="relative z-[3] border-b border-room-line bg-room-bg/80 backdrop-blur">
@@ -63,8 +70,8 @@ export default function Header() {
         <Link href="/" className="whitespace-nowrap font-display text-2xl text-room-text">
           Red <span className="text-room-red">Room</span>
         </Link>
-        <Suspense fallback={<NavLinks pathname={null} />}>
-          <ActiveNav />
+        <Suspense fallback={<NavLinks pathname={null} showLab={showLab} />}>
+          <ActiveNav showLab={showLab} />
         </Suspense>
         <div className="flex items-center gap-3">
           {demo && (

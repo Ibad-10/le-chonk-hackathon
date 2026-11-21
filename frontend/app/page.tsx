@@ -4,12 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Hammer, ShieldAlert, ShieldCheck, Swords } from "lucide-react";
+import { CalendarDays, Hammer, ShieldAlert, ShieldCheck, Swords } from "lucide-react";
 
 import AgentCard from "@/components/AgentCard";
 import { getArenaEvents, listAgents } from "@/lib/api";
 import { formatArenaEvent } from "@/lib/arena-wall";
 import { fixtureVillage, toPublicVillage } from "@/lib/base";
+import { getTodayChallenge, type Challenge } from "@/lib/challengeApi";
 import type { AgentSummary, ArenaEvent } from "@/lib/types";
 
 // three.js needs the DOM — no SSR.
@@ -42,6 +43,7 @@ export default function ArenaPage() {
   const [agents, setAgents] = useState<AgentSummary[] | null>(null);
   const [events, setEvents] = useState<ArenaEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [challenge, setChallenge] = useState<Challenge | null>(null);
   const village = useMemo(() => toPublicVillage(fixtureVillage("arena-home")), []);
 
   useEffect(() => {
@@ -51,6 +53,10 @@ export default function ArenaPage() {
     getArenaEvents()
       .then(setEvents)
       .catch(() => setEvents([]));
+    // Optional card: stays hidden if the fetch fails.
+    getTodayChallenge()
+      .then(setChallenge)
+      .catch(() => setChallenge(null));
   }, []);
 
   const open = agents?.filter((a) => !a.cooldown_until) ?? [];
@@ -106,6 +112,22 @@ export default function ArenaPage() {
       </section>
 
       <Ticker events={events} />
+
+      {challenge && (
+        <section aria-label="Today's challenge" className="mx-auto w-full max-w-6xl px-4 pt-8 sm:px-6">
+          <Link
+            href="/challenge"
+            className="flex items-center gap-4 rounded-2xl border border-room-line bg-room-panel px-5 py-4 hover:border-room-red/70"
+          >
+            <CalendarDays size={22} aria-hidden="true" className="shrink-0 text-room-red" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-room-red-soft">Today&apos;s challenge</p>
+              <p className="truncate font-semibold text-room-text">{challenge.title}</p>
+            </div>
+            <span className="text-sm font-semibold text-room-muted">Play</span>
+          </Link>
+        </section>
+      )}
 
       <section aria-label="Agents in the arena" className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
         <div className="flex items-end justify-between gap-4">
