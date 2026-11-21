@@ -36,7 +36,7 @@ Built at Le Chonk in London (Mistral Vibe Hackathon, 21 November 2026). The back
 | Moderation and card/bank number filter | Working | `backend/app/moderation.py` |
 | Logbook and Large 4 analyst on the Mistral Agents SDK | Working | `backend/app/analyst.py`, `backend/app/routes/owner.py` |
 | Retest loop with sibling variants and generalisation score | Working | `backend/app/retest.py`, `frontend/components/RetestPanel.tsx` |
-| Versions and Elo with rating deviation | Partial | `backend/app/scoring.py`, `backend/app/runs.py`. Elo is held in memory (see In progress). |
+| Versions and Elo with rating deviation (saved to Postgres; published versions used in live play) | Working | `backend/app/scoring.py`, `backend/app/runs.py`, `backend/app/creator.py` |
 | Cooldown after a loss | Working | `backend/app/lives.py`, `frontend/components/CooldownBadge.tsx` |
 | Create agent, placement test, 3-agent limit | Working | `backend/app/creator.py`, `backend/app/routes/agents.py`, `frontend/components/CreateWizard.tsx` |
 | Owner dashboard (logbook, draft, retest, publish) | Working | `frontend/components/defend.tsx`, `frontend/app/agents/[id]/owner` |
@@ -45,24 +45,23 @@ Built at Le Chonk in London (Mistral Vibe Hackathon, 21 November 2026). The back
 | Siege 2D view | Working | `frontend/components/Siege.tsx`, `SiegeReplay.tsx` |
 | Leaderboards (players and agents) | Working | `backend/app/routes/agents.py`, `frontend/app/leaderboard` |
 | Arena wall | Working | `backend/app/routes/wall.py`, `frontend/components/ArenaWall.tsx` |
-| Daily challenge and XP ranks | Partial | `backend/app/challenge.py`, `frontend/app/challenge`. XP persistence is in progress. |
+| Daily challenge and XP ranks (XP saved per run) | Working | `backend/app/challenge.py`, `frontend/app/challenge`, `frontend/components/RankBadge.tsx` |
 | Research agent with web search, house-agent training cycles with rollback | Working | `backend/app/research_agent.py`, `backend/app/training.py`, `backend/app/routes/training.py` |
 | Admin House agents lab | Working | `frontend/app/admin`, `frontend/components/admin/` |
 | Red Room MCP server | Working | `backend/app/mcp_server.py`, `backend/scripts/run_mcp.py`, [docs/MCP.md](docs/MCP.md) |
 | Clerk auth and verified voice WebSocket | Working | `backend/app/auth.py`, `backend/app/routes/voice_live.py` |
 | Supabase Postgres | Working | `backend/app/db.py`, `supabase/` |
 | Vercel deploy (frontend) | Working | `docs/DEPLOY.md` |
-| Run ownership checks on message, stream and end | In progress | `backend/app/routes/runs.py` |
+| Run ownership checks on message, stream and end; mode gating | Working | `backend/app/routes/runs.py`, `backend/app/auth.py` |
+| Genuine customer payments succeed; tool errors continue the run | Working | `backend/app/roles.py`, `backend/app/engine/tools/bank.py`, `backend/app/runs.py` |
 | Hosted backend | Planned | The backend runs on a laptop behind a tunnel today |
 
 ## In progress (being fixed now)
 
-- Run ownership checks on message, stream and end. Today only starting a practice run checks the owner.
-- Published versions used in live play, so a live run always uses the version the owner published.
-- Genuine payee success, so a genuine customer's real payment counts as success.
-- Tool errors continue the run instead of ending it.
-- Elo and XP persistence. Elo and player ratings are held in memory and reset when the backend restarts.
-- 3D village textures, lighting and troops.
+- 3D village textures, lighting and troop animation.
+- Hosted backend (today the backend runs on a laptop behind a Cloudflare tunnel).
+- Public `/events` feed still includes run ids (ownership checks stop misuse; ids will be replaced with opaque ids).
+- Full security and code review pass across the repo.
 
 ## Roadmap
 
