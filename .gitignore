@@ -10,3 +10,5 @@ data/private/
 .next/
 .pytest_cache/
 backend/scripts/voice_live_smoke_out/
+.claude/worktrees/
+.vercel/

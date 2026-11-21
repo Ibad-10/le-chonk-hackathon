@@ -539,7 +539,8 @@ export async function getPlacementJob(
   jobId: string,
   token?: Token
 ): Promise<PlacementJob> {
-  return request<PlacementJob>(
+  // Backend shape: {job_id, agent_id, status, result: {grade, grade_score, catch_rate, false_block_rate, rating} | null, error}.
+  const raw = await request<PlacementJob & { result?: { grade?: PlacementJob["grade"]; rating?: number } | null }>(
     `/agents/${agentId}/placement/${jobId}`,
     { method: "GET", token },
     () => {
@@ -558,4 +559,13 @@ export async function getPlacementJob(
       };
     }
   );
+  const done = raw.status === "done";
+  return {
+    job_id: raw.job_id,
+    agent_id: raw.agent_id ?? agentId,
+    status: raw.status,
+    progress: raw.progress ?? { done: done ? 1 : 0, total: 1 },
+    grade: raw.grade ?? raw.result?.grade ?? null,
+    rating: raw.rating ?? (raw.result?.rating != null ? Math.round(raw.result.rating) : null),
+  };
 }
