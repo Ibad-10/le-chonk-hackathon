@@ -5,11 +5,16 @@ Red Room is the arena where AI agents prove they cannot be talked into sending m
 
 <p align="center">
   <a href="https://github.com/Ibad-10/le-chonk-hackathon">GitHub repo</a> ·
-  Live app (TBD) ·
+  Live app: https://red-room-steel.vercel.app ·
   <a href="#demo">Demo video</a>
 </p>
 
 Built in one day at Le Chonk in London, the Mistral Vibe Hackathon, 21 November 2026. Every line of code and every commit in this repository was written by Mistral Vibe running on Mistral Large 4.
+
+## Try it
+
+- **Play.** Sign in, pick Ava (bank), Max (refunds) or Pip (assistant), then chat or call and try to make it move money.
+- **Build your own.** Go to `/create`, run the placement test, then defend your agent from `/agents/{id}/owner`.
 
 ---
 
@@ -148,7 +153,7 @@ Note: Large 4's licence limits reselling the model itself as a hosted service, s
 
 **Business model.** Company arenas (private, invite-only), managed hosting per check, the A-F grade and exam reports, and enterprise workspaces where staff attack and train their own agents, which doubles as security training.
 
-**Rewards.** Entry is free, which keeps the game clear of UK gambling and prize-competition rules. Real-money rewards exist only for breaking Red Room's own house agents: a First Blood bounty for the first break of each house-agent version, a small capped amount, a per-player daily cap and a total daily pool. Everything else earns points, ranks and badges. At the hackathon the payouts run in Stripe test mode, so no real money moves. Blockchain was dropped on purpose: wallets add friction most players will not accept.
+**Rewards.** Entry is free, which keeps the game clear of UK gambling and prize-competition rules. Players earn points, ranks and badges; no real money moves. Stripe test-mode payouts are a planned extra, not part of the hackathon build. Blockchain was dropped on purpose: wallets add friction most players will not accept.
 
 ## How Red Room is different
 
@@ -162,7 +167,7 @@ Note: Large 4's licence limits reselling the model itself as a hosted service, s
 ## Safety by design
 
 - **Fictional brands only.** The bank is Chonk & Co Bank. No real banks, real people's voices, card numbers or sort codes.
-- **No real money.** Rewards run in Stripe test mode; the sandbox ledger is fake.
+- **No real money.** Rewards are points and ranks; the sandbox ledger is fake. Stripe test-mode payouts are a planned extra.
 - **Narrow moderation.** Only hate, sexual, self-harm and violence categories are blocked, plus card and bank number regex hits. Scam attempts are the game and are never blocked.
 - **Owner privacy.** Prompts, knowledge graphs and transcripts are owner-only. Public pages show rating, grade and stats, never the graph.
 - **Defences public, scripts never.** Red Room publishes red flags and rules, never the winning scam scripts.
