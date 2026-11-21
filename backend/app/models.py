@@ -69,6 +69,7 @@ class Run(BaseModel):
     transcript: list[Turn] = Field(default_factory=list)
     tool_calls: list[ToolCall] = Field(default_factory=list)
     outcome: RunOutcome | None = None
+    stopped_by: Literal["agent", "hard_limit", "guardian", "none"] | None = None
     how_close: int = 0
     points: int = 0
     elo_delta: float = 0.0

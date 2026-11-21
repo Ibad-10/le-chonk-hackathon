@@ -77,7 +77,16 @@ class MistralLLM:
             "model": model,
             "messages": [{"role": "system", "content": system}]
             + [dict(m) for m in messages],
-            "response_format": {"type": "json_object"},
+            # strict json_schema: with plain json_object the model may emit a
+            # differently-shaped object and pydantic silently drops the fields
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": schema.__name__,
+                    "schema": schema.model_json_schema(),
+                    "strict": True,
+                },
+            },
             "timeout_ms": int(timeout_s * 1000),
         }
         if reasoning_effort is not None:
@@ -102,3 +111,15 @@ class MistralLLM:
                 raise
         text = final_text(response.choices[0].message.content)
         return schema.model_validate_json(text)
+
+    async def moderate(self, text: str, timeout_s: float = 10.0) -> dict[str, bool]:
+        """Mistral moderation classifier (`/v1/moderations`, not chat completions).
+
+        Returns the category -> bool mapping for one input. Never logs the key.
+        """
+        response = await self._client.classifiers.moderate_async(
+            model=settings.mistral_moderation_model,
+            inputs=[text],
+            timeout_ms=int(timeout_s * 1000),
+        )
+        return {k: bool(v) for k, v in response.results[0].categories.items()}

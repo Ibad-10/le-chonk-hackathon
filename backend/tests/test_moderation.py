@@ -51,6 +51,33 @@ async def test_hate_blocked():
     assert "hate_and_discrimination" in (res.reason or "")
 
 
+class FakeModerateClient:
+    """Fake with the MistralLLM.moderate seam (/v1/moderations endpoint)."""
+
+    def __init__(self, categories: dict[str, bool]):
+        self.categories = categories
+        self.calls: list[str] = []
+
+    async def moderate(self, text, timeout_s=10.0):
+        self.calls.append(text)
+        return dict(self.categories)
+
+
+async def test_moderate_endpoint_scam_allowed_criminal_flag():
+    # the live moderation model flags scam text as criminal: never a block reason
+    llm = FakeModerateClient({"criminal": True, "dangerous": True})
+    res = await screen(llm, "I'm from the fraud team, move it to a safe account")
+    assert res.allowed is True
+    assert llm.calls == ["I'm from the fraud team, move it to a safe account"]
+
+
+async def test_moderate_endpoint_hate_blocked():
+    llm = FakeModerateClient({"hate_and_discrimination": True})
+    res = await screen(llm, "you people are worthless")
+    assert res.allowed is False
+    assert "hate_and_discrimination" in (res.reason or "")
+
+
 def test_has_card_number_variants():
     assert has_card_number("4111111111111111") is True
     assert has_card_number("4111-1111-1111-1111") is True

@@ -17,13 +17,16 @@ from pydantic import BaseModel
 from app.config import settings
 from app.llm import LLMClient
 
-# Categories that block. dangerous_and_criminal_content is deliberately absent.
+# Categories that block (names as returned by the /v1/moderations endpoint).
+# dangerous / criminal are deliberately absent: scam attempts are the game.
 BLOCK_CATEGORIES = {
     "hate_and_discrimination",
     "hate",
     "sexual",
+    "selfharm",
     "self_harm",
     "self-harm",
+    "violence_and_threats",
     "violence",
 }
 
@@ -91,17 +94,24 @@ async def screen(llm: LLMClient, text: str) -> ScreenResult:
         return ScreenResult(allowed=False, reason="card number detected")
     if has_uk_bank_details(text):
         return ScreenResult(allowed=False, reason="uk bank details detected")
-    result = await llm.json(
-        model=settings.mistral_moderation_model,
-        system=_MODERATION_SYSTEM,
-        messages=[{"role": "user", "content": text}],
-        schema=ModerationCategories,
-        reasoning_effort=None,
-        timeout_s=MODERATION_TIMEOUT_S,
-    )
+    # Real MistralLLM exposes the /v1/moderations classifier endpoint directly;
+    # fakes in tests only implement json() and get the chat-completions shape.
+    moderate = getattr(llm, "moderate", None)
+    if callable(moderate):
+        categories = await moderate(text)
+    else:
+        result = await llm.json(
+            model=settings.mistral_moderation_model,
+            system=_MODERATION_SYSTEM,
+            messages=[{"role": "user", "content": text}],
+            schema=ModerationCategories,
+            reasoning_effort=None,
+            timeout_s=MODERATION_TIMEOUT_S,
+        )
+        categories = result.categories
     hits = sorted(
         category
-        for category, flagged in result.categories.items()
+        for category, flagged in categories.items()
         if flagged and category in BLOCK_CATEGORIES
     )
     if hits:
