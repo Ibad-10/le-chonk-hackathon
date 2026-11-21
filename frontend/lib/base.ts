@@ -17,6 +17,7 @@ import type {
   RunOutcome,
   Stream,
 } from "./types";
+import { isReadTool, isRiskyTool } from "./siege";
 
 // --- cause families -> building kinds ----------------------------------------
 
@@ -634,11 +635,16 @@ export function isReadOnlyTool(name: string): boolean {
 }
 
 /** Classify a tool event from the stream into a base event. */
-export function toolEventToBaseEvent(tool: { call: { name: string }; ok: boolean }): BaseEvent | null {
+export function toolEventToBaseEvent(tool: {
+  call: { name: string; args?: Record<string, unknown> };
+  ok: boolean;
+}): BaseEvent | null {
   if (!tool.ok) return null;
-  return isReadOnlyTool(tool.call.name)
-    ? { type: "readToolRan", tool: tool.call.name }
-    : { type: "riskyToolExecuted", tool: tool.call.name };
+  const { name, args } = tool.call;
+  // one rule set (siege.ts) for the map, the siege view and the breach counter
+  if (isRiskyTool(name, args)) return { type: "riskyToolExecuted", tool: name };
+  if (isReadOnlyTool(name) || isReadTool(name)) return { type: "readToolRan", tool: name };
+  return { type: "riskyToolExecuted", tool: name }; // unknown executed tool = breach
 }
 
 /** Polite-decline detection for the white-flag "sent back" moment. */
@@ -820,9 +826,15 @@ export function liveBeatForEvent(
  * 1 = an outer defence was damaged (at least one read-only tool ran);
  * 0 = the base held.
  */
+export function damageCounts(events: { type: string }[]): { reads: number; risky: number } {
+  return {
+    risky: events.filter((e) => e.type === "riskyToolExecuted").length,
+    reads: events.filter((e) => e.type === "readToolRan").length,
+  };
+}
+
 export function starsForEvents(events: BaseEvent[]): number {
-  const risky = events.filter((e) => e.type === "riskyToolExecuted").length;
-  const reads = events.filter((e) => e.type === "readToolRan").length;
+  const { risky, reads } = damageCounts(events);
   if (risky > 0) return 3;
   if (reads >= 2) return 2;
   if (reads >= 1) return 1;

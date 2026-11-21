@@ -9,6 +9,10 @@ interface TimerRingProps {
   seconds: number;
   onExpire: () => void;
   label?: string;
+  /** absolute deadline (ms epoch), e.g. the run's ends_at * 1000. Default: mount + seconds. */
+  endsAt?: number;
+  /** hold at full time (run not started yet) */
+  paused?: boolean;
 }
 
 /**
@@ -19,26 +23,36 @@ export default function TimerRing({
   seconds,
   onExpire,
   label = "time left",
+  endsAt,
+  paused = false,
 }: TimerRingProps) {
   const [left, setLeft] = useState(seconds);
   const expiredRef = useRef(false);
+  // keep the latest callback without restarting the interval: re-renders
+  // (streamed chunks, typing) must never reset the clock
+  const onExpireRef = useRef(onExpire);
+  onExpireRef.current = onExpire;
 
   useEffect(() => {
-    setLeft(seconds);
     expiredRef.current = false;
-  }, [seconds]);
-
-  useEffect(() => {
-    if (left <= 0) {
-      if (!expiredRef.current) {
-        expiredRef.current = true;
-        onExpire();
-      }
+    if (paused) {
+      setLeft(seconds);
       return;
     }
-    const id = setInterval(() => setLeft((s) => s - 1), 1000);
+    const deadline = endsAt ?? Date.now() + seconds * 1000;
+    const tick = () => {
+      const l = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+      setLeft(l);
+      if (l <= 0 && !expiredRef.current) {
+        expiredRef.current = true;
+        clearInterval(id);
+        onExpireRef.current();
+      }
+    };
+    const id = setInterval(tick, 1000);
+    tick();
     return () => clearInterval(id);
-  }, [left, onExpire]);
+  }, [seconds, endsAt, paused]);
 
   const R = 26;
   const C = 2 * Math.PI * R;

@@ -1,6 +1,7 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useSyncExternalStore } from "react";
+import { isDemoData, subscribeDemoData } from "@/lib/api";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth, UserButton } from "@clerk/nextjs";
@@ -55,6 +56,7 @@ function ActiveNav() {
 export default function Header() {
   // Clerk Core 3 removed <SignedIn>/<SignedOut>; use the useAuth hook instead
   const { isLoaded, isSignedIn } = useAuth();
+  const demo = useSyncExternalStore(subscribeDemoData, isDemoData, () => false);
   return (
     <header className="relative z-[3] border-b border-room-line bg-room-bg/80 backdrop-blur">
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center gap-3 px-4 sm:gap-6 sm:px-6">
@@ -65,6 +67,11 @@ export default function Header() {
           <ActiveNav />
         </Suspense>
         <div className="flex items-center gap-3">
+          {demo && (
+            <span className="rounded-full border border-room-line px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-room-muted">
+              demo data
+            </span>
+          )}
           {isLoaded && !isSignedIn && (
             <Link
               href="/sign-in"

@@ -73,22 +73,59 @@ function headers(token: Token, write: boolean): HeadersInit {
   return h;
 }
 
+/** Backend URL explicitly configured (read at call time so tests can stub it). */
+function backendConfigured(): boolean {
+  return !!process.env.NEXT_PUBLIC_BACKEND_URL;
+}
+
+/** Thrown by run endpoints when the backend can't be reached. Never mocked. */
+export class ConnectionError extends Error {
+  constructor(message = "Connection to the agent lost.") {
+    super(message);
+    this.name = "ConnectionError";
+  }
+}
+
+// "demo data" flag: set when a read-only browse call fell back to mock data.
+let demoData = false;
+const demoListeners = new Set<() => void>();
+export const isDemoData = () => demoData;
+export function subscribeDemoData(fn: () => void) {
+  demoListeners.add(fn);
+  return () => {
+    demoListeners.delete(fn);
+  };
+}
+function markDemo() {
+  if (demoData) return;
+  demoData = true;
+  demoListeners.forEach((f) => f());
+}
+
 async function request<T>(
   path: string,
-  init: RequestInit & { token?: Token; write?: boolean },
-  fallback: () => T
+  init: RequestInit & { token?: Token; write?: boolean; run?: boolean },
+  fallbackFn: () => T
 ): Promise<T> {
-  const { token, write = false, ...rest } = init;
+  const { token, write = false, run = false, ...rest } = init;
+  // Run endpoints never fall back to mock once the backend is configured:
+  // a silent swap would replace real agent replies mid-run.
+  const noMock = run && backendConfigured();
+  const fallback = () => {
+    markDemo();
+    return fallbackFn();
+  };
   try {
     const res = await fetch(`${BASE_URL}${path}`, {
       ...rest,
       headers: headers(token, write),
     });
-    if (res.status === 404) return fallback(); // route not built yet -> mock
+    if (res.status === 404 && !noMock) return fallback(); // route not built yet -> mock
     if (!res.ok) throw new ApiError(res.status, await res.text());
     return (await res.json()) as T;
   } catch (err) {
     if (err instanceof ApiError) throw err;
+    if (noMock) throw new ConnectionError();
     // backend unreachable (not running locally) -> mock so pages render
     return fallback();
   }
@@ -129,6 +166,7 @@ export async function startRun(
       }),
       token: opts.token,
       write: true,
+      run: true,
     },
     () => {
       // MOCK fallback: backend unreachable -> local mock run so the play page renders.
@@ -149,7 +187,7 @@ export async function sendMessage(
 ): Promise<MessageResponse> {
   return request<MessageResponse>(
     `/runs/${runId}/message`,
-    { method: "POST", body: JSON.stringify({ text }), token, write: true },
+    { method: "POST", body: JSON.stringify({ text }), token, write: true, run: true },
     () => ({
       run_id: runId,
       reply: "(mock) I can't do that without verifying your identity first.",
@@ -180,9 +218,9 @@ export async function streamMessage(
     res = await fetch(url, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
-  } catch (err) {
-    // MOCK fallback: stream a canned reply token by token so the UI is testable
-    // without the backend running.
+  } catch {
+    if (backendConfigured()) throw new ConnectionError();
+    // MOCK fallback (backend not configured, local dev only).
     const mockReply =
       "(mock) I can only help with verified requests. Could you confirm the details on your account?";
     for (const word of mockReply.split(" ")) {
@@ -199,10 +237,7 @@ export async function streamMessage(
     });
     return;
   }
-  if (res.status === 404 || !res.ok || !res.body) {
-    cb.onError?.(new ApiError(res.status, "stream unavailable"));
-    return;
-  }
+  if (!res.ok || !res.body) throw new ApiError(res.status, "stream unavailable");
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -236,7 +271,7 @@ export async function streamMessage(
 export async function endRun(runId: string, token?: Token): Promise<RunResult> {
   return request<RunResult>(
     `/runs/${runId}/end`,
-    { method: "POST", body: "{}", token, write: true },
+    { method: "POST", body: "{}", token, write: true, run: true },
     () => ({
       run_id: runId,
       outcome: "no_contest",
@@ -282,7 +317,7 @@ export function toRoleBrief(raw: unknown): RoleBrief | null {
 export async function getRoleBrief(runId: string): Promise<RoleBrief> {
   return request<RoleBrief>(
     `/runs/${runId}/brief`,
-    { method: "GET" },
+    { method: "GET", run: true },
     () => MOCK_ROLE_BRIEF
   );
 }
