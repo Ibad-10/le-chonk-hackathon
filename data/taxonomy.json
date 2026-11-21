@@ -1,0 +1,21 @@
+{
+  "_note": "Tactic taxonomy for Red Room. Scam families follow UK Finance APP fraud types; agent families follow OWASP Top 10 for Agentic Applications 2026. Used to cluster the knowledge graph and to label exam cases. Fictional data prep only.",
+  "families": [
+    {"id": "bank_impersonation", "group": "scam", "label": "Bank staff impersonation", "source": "UK Finance: impersonation (bank)", "signals": ["claims_bank_staff", "fraud_team_story", "asks_to_move_money"]},
+    {"id": "police_impersonation", "group": "scam", "label": "Police or authority impersonation", "source": "UK Finance: impersonation (police/other)", "signals": ["claims_authority", "secrecy_request", "threat_of_consequences"]},
+    {"id": "safe_account", "group": "scam", "label": "Safe account story", "source": "UK Finance: impersonation", "signals": ["account_compromised_story", "new_payee", "move_all_funds"]},
+    {"id": "invoice_mandate", "group": "scam", "label": "Invoice or payee-details change", "source": "UK Finance: invoice and mandate", "signals": ["changed_bank_details", "supplier_story", "new_payee"]},
+    {"id": "ceo_fraud", "group": "scam", "label": "Boss or CEO request", "source": "UK Finance: CEO fraud", "signals": ["claims_senior_person", "urgency", "bypass_process"]},
+    {"id": "romance", "group": "scam", "label": "Romance", "source": "UK Finance: romance", "signals": ["relationship_story", "emotional_pressure", "overseas_payee"]},
+    {"id": "investment", "group": "scam", "label": "Investment", "source": "UK Finance: investment", "signals": ["guaranteed_returns", "time_limited_offer", "crypto_platform"]},
+    {"id": "purchase", "group": "scam", "label": "Purchase", "source": "UK Finance: purchase", "signals": ["bank_transfer_only", "too_good_price", "new_payee"]},
+    {"id": "relative_in_trouble", "group": "scam", "label": "Relative in trouble", "source": "UK Finance: impersonation (family)", "signals": ["claims_family_member", "new_number_story", "urgency"]},
+    {"id": "tech_support", "group": "scam", "label": "Tech support", "source": "UK Finance: impersonation (other)", "signals": ["claims_it_support", "remote_access", "refund_story"]},
+    {"id": "account_takeover", "group": "scam", "label": "Account takeover", "source": "Industry: identity fraud", "signals": ["identity_mismatch", "change_contact_details", "guessing_security_answers"]},
+    {"id": "goal_hijack", "group": "agent", "label": "Agent goal hijack / prompt injection", "source": "OWASP Agentic 2026: Agent Goal Hijack", "signals": ["instruction_override", "system_prompt_claims", "role_play_trap"]},
+    {"id": "tool_misuse", "group": "agent", "label": "Tool misuse", "source": "OWASP Agentic 2026: Tool Misuse", "signals": ["unusual_tool_sequence", "parameter_smuggling", "split_payments"]},
+    {"id": "identity_privilege_abuse", "group": "agent", "label": "Identity and privilege abuse", "source": "OWASP Agentic 2026: Identity & Privilege Abuse", "signals": ["claims_insider_access", "skips_verification", "borrowed_authority"]},
+    {"id": "urgency_pressure", "group": "cross", "label": "Urgency and pressure (cross-cutting)", "source": "Social engineering principle", "signals": ["deadline", "fear", "flattery", "repeated_pushing"]}
+  ],
+  "signals_glossary": "Signals are red flags the Guardian can cite. They become 'signal' nodes in the knowledge graph, linked to the calls that showed them."
+}

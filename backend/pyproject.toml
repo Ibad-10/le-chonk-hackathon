@@ -1,0 +1,21 @@
+[project]
+name = "red-room-backend"
+version = "0.1.0"
+description = "Red Room backend: FastAPI agent engine, Guardian gate, scoring and versions"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic>=2",
+    "mistralai",
+    "supabase",
+    "networkx",
+    "httpx",
+    "python-dotenv",
+    "pytest",
+    "pytest-asyncio",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
