@@ -144,7 +144,7 @@ async def _attacker_message(llm: LLMClient, transcript: list[Turn], guide: str) 
 async def adaptive_case(llm: LLMClient, case: RetestCase, entry: LogbookEntry, draft: AgentDraft) -> bool:
     """One adaptive replay conversation. Returns True when the draft BLOCKED the
     attack (no win by code within MAX_ATTACK_TURNS turns)."""
-    target = load_target(entry.agent_id)
+    target = _load_any_target(entry.agent_id)
     state = MockState.from_target(target)
     transcript: list[Turn] = []
     for i in range(MAX_ATTACK_TURNS):
@@ -179,6 +179,19 @@ def _player_turns(run: Run) -> list[str]:
 
 # --- the retest loop ---------------------------------------------------------------
 
+_ENGINE: Engine | None = None  # set by run_retest so creator agents (config in DB) can load
+
+
+def _load_any_target(agent_id: str):
+    """House agents load from targets/*.json; creator agents from the database."""
+    try:
+        return load_target(agent_id)
+    except FileNotFoundError:
+        if _ENGINE is None:
+            raise
+        from app.creator import load_runtime
+        return load_runtime(_ENGINE, agent_id)[0]
+
 
 async def run_retest(
     llm: LLMClient,
@@ -191,6 +204,8 @@ async def run_retest(
 ) -> dict[str, Any]:
     """Retest the up to 5 most recent open failures: original + 3 siblings,
     3 repeats each, 8 conversations in parallel. Returns the report."""
+    global _ENGINE
+    _ENGINE = engine
     with Session(engine) as session:
         draft = session.exec(
             select(AgentDraft).where(

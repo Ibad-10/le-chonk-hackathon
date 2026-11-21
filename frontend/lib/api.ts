@@ -391,11 +391,14 @@ export async function getNowPlaying(): Promise<NowPlayingCard[]> {
 
 /** GET /agents/{id}/logbook */
 export async function getLogbook(agentId: string, token?: Token): Promise<Logbook> {
-  return request<Logbook>(
+  const raw = await request<Logbook>(
     `/agents/${agentId}/logbook`,
     { method: "GET", token },
     () => MOCK_LOGBOOK
   );
+  // Backend returns {entries} only; groups come from POST /analyse. Never let a missing list crash a page.
+  const r = (raw ?? {}) as Partial<Logbook> & Record<string, unknown>;
+  return { ...r, groups: Array.isArray(r.groups) ? r.groups : [], entries: Array.isArray(r.entries) ? r.entries : [] } as Logbook;
 }
 
 /** POST /agents/{id}/analyse — Large 4 analyst groups losses by root cause. */

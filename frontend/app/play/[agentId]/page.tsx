@@ -166,8 +166,18 @@ function PlayPageInner({ agentId }: { agentId: string }) {
       .then((a) => !cancelled && setAgent(a))
       .catch((e) => !cancelled && setError(e.message));
     (async () => {
-      const token = isSignedIn ? await getToken() : null;
+      // Wait for Clerk: starting a run without a token gives a raw 401.
+      if (!isLoaded) return;
+      if (!isSignedIn) {
+        setError("Sign in to start a raid.");
+        return;
+      }
+      const token = await getToken();
       if (cancelled) return;
+      if (!token) {
+        setError("Sign in again to start a raid.");
+        return;
+      }
       try {
         const run = await startRun(agentId, {
           channel: "text",
@@ -182,14 +192,26 @@ function PlayPageInner({ agentId }: { agentId: string }) {
         if (run.brief) setBrief(run.brief);
         else getRoleBrief(run.run_id).then((b) => !cancelled && setBrief(b)).catch(() => {});
       } catch (e) {
-        if (!cancelled)
-          setError(e instanceof Error ? e.message : "could not start run");
+        if (!cancelled) {
+          const msg = e instanceof Error ? e.message : "";
+          setError(
+            /\b409\b/.test(msg) && /lives/i.test(msg)
+              ? "You're out of lives for now. A life refills every 5 minutes."
+              : /\b401\b/.test(msg)
+                ? "Please sign in again."
+                : /\b403\b/.test(msg)
+                  ? "You don't have access to this agent."
+                  : /\b409\b/.test(msg)
+                    ? "This agent is rebuilding after a raid. Try again shortly."
+                    : "Couldn't start the raid. Try again."
+          );
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [agentId, isSignedIn, getToken, practice]);
+  }, [agentId, isLoaded, isSignedIn, getToken, practice]);
 
   const finish = useCallback(async () => {
     const id = runIdRef.current;

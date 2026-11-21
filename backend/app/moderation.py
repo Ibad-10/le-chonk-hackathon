@@ -74,6 +74,9 @@ def has_card_number(text: str) -> bool:
 def has_uk_bank_details(text: str) -> bool:
     """True for a UK sort code (dd-dd-dd) with an 8-digit account number nearby."""
     for match in _SORT_CODE.finditer(text):
+        # Sandbox bank details (fictional Chonk & Co Bank) use sort codes 99-xx-xx or 00-xx-xx: allowed.
+        if match.group(0)[:2] in ("99", "00"):
+            continue
         window = text[max(0, match.start() - _ACCOUNT_WINDOW): match.end() + _ACCOUNT_WINDOW]
         if _ACCOUNT_8.search(window):
             return True
@@ -93,7 +96,7 @@ async def screen(llm: LLMClient, text: str) -> ScreenResult:
     if has_card_number(text):
         return ScreenResult(allowed=False, reason="card number detected")
     if has_uk_bank_details(text):
-        return ScreenResult(allowed=False, reason="uk bank details detected")
+        return ScreenResult(allowed=False, reason="real-looking bank details detected: use sandbox details (sort code starting 99 or 00)")
     # Real MistralLLM exposes the /v1/moderations classifier endpoint directly;
     # fakes in tests only implement json() and get the chat-completions shape.
     moderate = getattr(llm, "moderate", None)
