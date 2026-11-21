@@ -1,5 +1,12 @@
 # Red Room: team handover
 
+## Status at 17:40
+
+- Live frontend: https://red-room-steel.vercel.app (Vercel).
+- Backend runs on Ibad's laptop behind a Cloudflare quick tunnel. The tunnel URL changes on every restart, so the frontend's backend URL must be updated after a restart. Hugging Face free Docker Spaces need PRO, and the Render free tier sleeps, so neither is used.
+- Merged: create-agent wizard with placement test, my agents, Zohaib's UI polish (PR #1), design pass on the leaderboard, agent and graph pages.
+- In flight: run ownership auth, published versions used in play, genuine payee, tool errors continue the run, Elo and XP persistence, timer ticking, breach counter, no mock fallback mid-run.
+
 Last updated: Sat 21 Nov 2026, about 14:50, Le Chonk in London (Mistral Vibe Hackathon). Submission due 18:00 with a demo video; 5-minute live pitch to the jury.
 
 If you are a coding agent (Claude Code, Vibe, Cursor): read this file, then `AGENTS.md`, then the v4 and v4.1 specs below, before changing anything.
