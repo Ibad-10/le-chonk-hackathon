@@ -97,8 +97,8 @@ export default function LeaderboardPage() {
                 <td className="px-4 py-3 text-room-text">
                   <div className="flex items-center gap-3">
                     <span>{p.name}</span>
-                    {typeof p.xp === "number" && ranks.length > 0 && (
-                      <RankBadge xp={p.xp} ranks={ranks} />
+                    {typeof (p.xp ?? p.points) === "number" && ranks.length > 0 && (
+                      <RankBadge xp={(p.xp ?? p.points) as number} ranks={ranks} />
                     )}
                   </div>
                 </td>
