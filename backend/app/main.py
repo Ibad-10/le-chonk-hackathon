@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth import ClerkAuth
+from app.creator import PlacementService
 from app.db import init_db, make_engine, seed_house_agents
 from app.improvement import RetestService
 from app.llm import MistralLLM
@@ -40,6 +41,7 @@ async def lifespan(app: FastAPI):
         llm, repo=SQLiteRunsRepo(engine), logbook=SQLiteLogbookRepo(engine), engine=engine
     )
     app.state.retest_service = RetestService(llm, engine, app.state.run_service)
+    app.state.placement_service = PlacementService(llm, engine)
     yield
 
 
