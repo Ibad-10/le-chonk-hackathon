@@ -95,6 +95,8 @@ class RunRow(SQLModel, table=True):
     tool_calls: list[Any] = Field(default_factory=list, sa_column=Column(JSON))
     outcome: str | None = None
     stopped_by: str | None = None
+    role: str | None = None  # v4.1: dealt role on arena runs
+    loss_kind: str | None = None  # "security" | "helpfulness" on agent losses
     how_close: int = 0
     points: int = 0
     elo_delta: float = 0.0
@@ -111,7 +113,9 @@ class LogbookEntry(SQLModel, table=True):
     run_id: str = Field(foreign_key="runs.id")
     outcome: str
     stopped_by: str | None = None
-    family: str | None = None
+    family: str | None = None  # tactic family, filled by the analyst
+    language: str | None = None  # v4.1: caller language of the run
+    loss_kind: str | None = None  # "security" | "helpfulness"
     signals: list[Any] = Field(default_factory=list, sa_column=Column(JSON))
     how_close: int = 0
     open: bool = True

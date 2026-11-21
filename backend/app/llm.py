@@ -94,6 +94,11 @@ class LLMClient(Protocol):
 
         ...
 
+    async def embed(self, texts: list[str], timeout_s: float = 30.0) -> list[list[float]]:
+        """`mistral-embed` vectors for a batch of texts (analyst grouping)."""
+
+        ...
+
 
 
 def final_text(content: Any) -> str:
@@ -340,6 +345,15 @@ class MistralLLM:
                 return await _stream(self._with_429_fallback(request, model))
             else:
                 raise
+
+    async def embed(self, texts: list[str], timeout_s: float = 30.0) -> list[list[float]]:
+        """`mistral-embed` vectors via `/v1/embeddings` (analyst grouping)."""
+        response = await self._client.embeddings.create_async(
+            model=settings.mistral_embed_model,
+            inputs=texts,
+            timeout_ms=int(timeout_s * 1000),
+        )
+        return [list(data.embedding) for data in response.data]
 
     async def moderate(self, text: str, timeout_s: float = 10.0) -> dict[str, bool]:
         """Mistral moderation classifier (`/v1/moderations`, not chat completions).

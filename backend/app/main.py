@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.auth import ClerkAuth
 from app.db import init_db, make_engine, seed_house_agents
 from app.llm import MistralLLM
-from app.repo import SQLiteRunsRepo
+from app.repo import SQLiteLogbookRepo, SQLiteRunsRepo
 from app.routes.runs import router as runs_router
 from app.runs import RunService
 
@@ -27,7 +27,9 @@ async def lifespan(app: FastAPI):
     seed_house_agents(engine)
     app.state.db_engine = engine
     app.state.clerk_auth = ClerkAuth()
-    app.state.run_service = RunService(MistralLLM(), repo=SQLiteRunsRepo(engine))
+    app.state.run_service = RunService(
+        MistralLLM(), repo=SQLiteRunsRepo(engine), logbook=SQLiteLogbookRepo(engine)
+    )
     yield
 
 

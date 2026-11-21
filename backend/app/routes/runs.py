@@ -13,7 +13,7 @@ from app.auth import current_player
 from app.config import settings
 from app.db import Player
 from app.models import RunChannel, RunMode
-from app.runs import NoLivesAvailable, RunNotFound, RunService
+from app.runs import AgentInCooldown, NoLivesAvailable, RunNotFound, RunService
 
 router = APIRouter()
 
@@ -49,11 +49,15 @@ async def start_run(req: StartRunRequest, request: Request, player: Player = Dep
         )
     except NoLivesAvailable as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+    except AgentInCooldown as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     duration = settings.run_voice_s if run.channel == "voice" else settings.run_text_s
     return {
         "run_id": run.id,
         "agent_id": run.agent_id,
         "ends_at": run.started_at.timestamp() + duration,
+        "role": run.role,  # v4.1: the dealt role, with the player-only brief
+        "brief": service.brief_for(run.id),
     }
 
 

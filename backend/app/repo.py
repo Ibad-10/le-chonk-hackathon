@@ -6,10 +6,12 @@ JSON columns. Used by RunService for every run create/update.
 
 from __future__ import annotations
 
+from typing import Protocol
+
 from sqlalchemy import Engine
 from sqlmodel import Session, select
 
-from app.db import RunRow
+from app.db import LogbookEntry, RunRow
 from app.models import Run
 
 
@@ -28,6 +30,8 @@ def _to_row(run: Run) -> RunRow:
         tool_calls=[c.model_dump() for c in run.tool_calls],
         outcome=run.outcome,
         stopped_by=run.stopped_by,
+        role=run.role,
+        loss_kind=run.loss_kind,
         how_close=run.how_close,
         points=run.points,
         elo_delta=run.elo_delta,
@@ -52,6 +56,8 @@ def _to_run(row: RunRow) -> Run:
             "tool_calls": row.tool_calls,
             "outcome": row.outcome,
             "stopped_by": row.stopped_by,
+            "role": row.role,
+            "loss_kind": row.loss_kind,
             "how_close": row.how_close,
             "points": row.points,
             "elo_delta": row.elo_delta,
@@ -88,3 +94,30 @@ class SQLiteRunsRepo:
                     if field != "id":
                         setattr(row, field, getattr(fresh, field))
             session.commit()
+
+
+class LogbookRepo(Protocol):
+    def record(self, entry: LogbookEntry) -> None: ...
+    def open_entries(self, agent_id: str) -> list[LogbookEntry]: ...
+
+
+class SQLiteLogbookRepo:
+    """LogbookRepo implementation on the `logbook_entries` table."""
+
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+
+    def record(self, entry: LogbookEntry) -> None:
+        with Session(self._engine) as session:
+            session.add(entry)
+            session.commit()
+
+    def open_entries(self, agent_id: str) -> list[LogbookEntry]:
+        with Session(self._engine) as session:
+            return list(
+                session.exec(
+                    select(LogbookEntry).where(
+                        LogbookEntry.agent_id == agent_id, LogbookEntry.open == True  # noqa: E712
+                    )
+                ).all()
+            )

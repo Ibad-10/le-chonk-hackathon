@@ -58,6 +58,8 @@ class Run(BaseModel):
     tool_calls: list[ToolCall] = Field(default_factory=list)
     outcome: RunOutcome | None = None
     stopped_by: Literal["agent", "none"] | None = None
+    role: Literal["scammer", "genuine"] | None = None  # v4.1: dealt on arena runs
+    loss_kind: Literal["security", "helpfulness"] | None = None  # agent loss type
     how_close: int = 0
     points: int = 0
     elo_delta: float = 0.0

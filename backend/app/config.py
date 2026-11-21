@@ -50,6 +50,10 @@ class Settings:
     run_text_messages: int = int(_get("RUN_TEXT_MESSAGES", "20"))
     run_idle_s: float = float(_get("RUN_IDLE_S", "60"))
 
+    # v4.1: dealt roles + arena cooldown (V4-5 / V4-19)
+    genuine_rate: float = float(_get("GENUINE_RATE", "0.2"))
+    arena_cooldown_s: float = float(_get("ARENA_COOLDOWN_S", "600"))
+
     # App wiring
     backend_url: str = _get("BACKEND_URL", "http://localhost:8000")
     next_public_backend_url: str = _get("NEXT_PUBLIC_BACKEND_URL", "http://localhost:8000")
