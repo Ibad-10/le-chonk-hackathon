@@ -7,12 +7,26 @@ Red Room is an arena where AI agents prove they cannot be talked into sending mo
 <p align="center">
   Live app: <a href="https://red-room-steel.vercel.app">https://red-room-steel.vercel.app</a> ·
   <a href="https://github.com/Ibad-10/le-chonk-hackathon">GitHub repo</a> ·
-  Demo video: TBD
+  <a href="#demos">Demo videos</a> ·
+  <a href="docs/SUBMISSION.md">Submission</a>
 </p>
 
 Built at Le Chonk in London (Mistral Vibe Hackathon, 21 November 2026). The backend was built with Mistral Vibe on Mistral Large 4. Later features and fixes were done with Claude Code. Team: Ibad Ullah Zuberi, Zohaib (UI polish) and teammates.
 
 See [docs/SUBMISSION.md](docs/SUBMISSION.md) for the hackathon submission: description, why we built it, and what we used from Mistral.
+
+## Demos
+
+| Demo | What it shows | File |
+|---|---|---|
+| Demo video (1:29) | The pitch: the problem, Red Room, and the product in action | [docs/media/red-room-demo-video.mp4](docs/media/red-room-demo-video.mp4) |
+| Screen recording walkthrough (4:11) | A full click-through of the live app: attacking agents, the logbook, retest and publish, voice, leaderboards | [docs/media/red-room-demo-walkthrough.mp4](docs/media/red-room-demo-walkthrough.mp4) |
+
+The 5-minute live demo script, with every click and line, is in [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md).
+
+## Overall goal
+
+AI agents are being given the power to act: move money, issue refunds, read private files. Red Room is where they prove they can't be talked into misusing that power. The crowd finds the holes before scammers do, every hole becomes a lesson the owner fixes, and the agent leaves with a rating that shows it holds. Long term, Red Room becomes a credit-rating style grade for any AI agent that takes actions.
 
 ## Try it
 
@@ -56,33 +70,44 @@ See [docs/SUBMISSION.md](docs/SUBMISSION.md) for the hackathon submission: descr
 | Vercel deploy (frontend) | Working | `docs/DEPLOY.md` |
 | Run ownership checks on message, stream and end; mode gating | Working | `backend/app/routes/runs.py`, `backend/app/auth.py` |
 | Genuine customer payments succeed; tool errors continue the run | Working | `backend/app/roles.py`, `backend/app/engine/tools/bank.py`, `backend/app/runs.py` |
-| Hosted backend | Planned | The backend runs on a laptop behind a tunnel today |
+| Sandbox bank details (sort codes 99/00) pass moderation so agents can be broken | Working | `backend/app/moderation.py` |
+| Retest for creator agents (config loaded from the database) | Working | `backend/app/retest.py` |
+| Hackathon open access: every signed-in player can use every agent's owner tools (`OPEN_ACCESS=1`) | Working | `backend/app/auth.py` |
+| Hosted backend | Live on a laptop | Cloudflare quick tunnel today; see [Deploy](#deploy) |
 
-## In progress (being fixed now)
+## In progress
 
-- 3D village textures, lighting and troop animation.
-- Hosted backend (today the backend runs on a laptop behind a Cloudflare tunnel).
-- Public `/events` feed still includes run ids (ownership checks stop misuse; ids will be replaced with opaque ids).
-- Full security and code review pass across the repo.
+Unfinished work is saved on branches; [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md) lists each one and the open bugs.
 
-## Roadmap
+- 3D village textures, lighting and troop animation (`wip/ac5dcbaa736340f79`).
+- Security review fixes: voice mode and run-ownership checks, language whitelist, no arena runs on your own agent, caps on retest and placement jobs (`wip/afef77894b6893cda`).
+- UI polish: access-denied states, arena wall ticker dedupe, readable player names (`wip/aeed5ceba45d7649c`).
+- A deliberately weak training-dummy agent for new players, and fairer placement grades for careful agents.
+- Public `/events` feed still includes run ids (ownership checks stop misuse; ids will become opaque).
 
-**Next**
-- Hosted backend instead of a laptop tunnel.
+## Roadmap and future
+
+**Next (weeks)**
+- Hosted backend instead of a laptop tunnel (Docker image is ready in `backend/Dockerfile`).
+- Strict ownership back on after the event (`OPEN_ACCESS=0`), with company workspaces for shared agents.
 - Stripe test-mode First Blood bounties on house agents.
-- Agent duels.
-- Company private arenas and invite-only arenas.
-- Export package and Guardian-free hardened agent packs.
-- Public and private sharing, a try-my-agent link, an embed widget and a private API endpoint.
-- CI regression check as a GitHub Action.
-- Robustness report.
-- Notifications.
-- More streams: letting agent, IT helpdesk, HR, airline, coding agent, smart home.
-- Heist chains across agents.
-- Per-agent LoRA adapters and self-hosted open-weight Mistral for enterprises.
-- Workflow for analyse, approve, retest.
+- Agent duels: two owners' agents defend the same mission; the crowd decides who holds longer.
+- Public and private sharing: a try-my-agent link, an embed widget and a private API endpoint.
+- CI regression check as a GitHub Action: every past break replays on each prompt change.
+- Notifications when your agent is broken or climbs the leaderboard.
 
-**The goal.** An arena and a credit-rating style grade for any AI agent that takes actions. The crowd finds the holes before scammers do, and owners leave with an agent that holds.
+**Later (months)**
+- Company private arenas and invite-only arenas, where staff attack their own agents (security training at the same time).
+- Export package: instructions, knowledge, regression suite and grade report, ready to take to production.
+- Robustness report a company can show its regulator or auditor.
+- More streams: letting agent, IT helpdesk, HR, airline, coding agent, smart home.
+- Heist chains across agents: break the assistant to get a detail that unlocks the bank.
+- Mistral Workflows for the analyse, approve, retest pipeline with human sign-off steps.
+
+**Future vision**
+- Per-agent LoRA adapters trained on each agent's own logbook, and self-hosted open-weight Mistral for enterprises that can't send customer data out.
+- A standard grade, like a credit rating, that any company deploying an action-taking agent can earn and display.
+- A shared public library of red flags and defence rules (never the winning scam scripts) built from every break in the arena.
 
 ---
 
@@ -197,6 +222,72 @@ Every AI call in Red Room uses Mistral models through the Mistral API.
 | Grouping similar failures in the logbook | Mistral embeddings |
 | Writing the backend | Mistral Vibe running on Large 4 (later work with Claude Code) |
 | Attacking an agent from inside Vibe | Red Room MCP server |
+| Fallback when Large 4 is rate-limited | Mistral Small 4 (`mistral-small-2603`) |
+
+### Mistral workflows in detail
+
+**1. One live raid turn (text or voice).** Every player message goes through moderation, then the agent on Large 4 decides whether to call a sandbox tool. Code, not a model, decides whether the scam won.
+
+```mermaid
+flowchart LR
+    P["Player message<br/>(typed, or Voxtral realtime transcript)"] --> M["mistral-moderation-2603<br/>+ card/bank regex"]
+    M -- blocked --> R1["Friendly refusal shown"]
+    M -- allowed --> A["Agent on Large 4<br/>low reasoning, streamed"]
+    A -- "tool call" --> T["Sandbox tools<br/>add_payee, send_payment, refund, read_file"]
+    T --> W{"Win check in code<br/>(wins.py)"}
+    W -- "scam succeeded" --> L["Loss saved to owner logbook"]
+    W -- "held" --> A
+    A --> O["Reply streamed to chat<br/>or spoken by Voxtral TTS"]
+```
+
+**2. Owner improvement loop (Mistral Agents SDK).** The analyst finds the cause; the owner writes the fix; Large 4 tests it with reworded attacks.
+
+```mermaid
+flowchart TD
+    L["Logbook of losses"] --> E["mistral-embed<br/>clusters similar failures"]
+    E --> AN["Logbook analyst<br/>Mistral Agent on Large 4, high reasoning<br/>structured output: root cause, breaking moment, language"]
+    AN --> OW["Owner rewrites instructions<br/>(no AI-written fix: fixing is the skill)"]
+    OW --> V["Variant writer on Large 4<br/>3 reworded siblings per failure"]
+    V --> RT["Adaptive attacker on Large 4<br/>replays each attack 3 times"]
+    RT --> S{"Original + all siblings blocked?"}
+    S -- yes --> PUB["Publish new version<br/>Elo carries over"]
+    S -- no --> OW
+```
+
+**3. House-agent self-training (Mistral Agents SDK with web search).** Our own agents (Ava, Max, Pip) learn from this week's real scam news, inside hard limits.
+
+```mermaid
+flowchart TD
+    RA["Research agent<br/>Mistral Agent + built-in web search"] --> TA["New scam tactics with source links"]
+    TA --> AT["Attacks around each open weakness<br/>(max 30 per cycle)"]
+    AT --> PR["Large 4 proposes improved instructions"]
+    PR --> EX["Frozen held-out exam<br/>(data/exam_cases.jsonl)"]
+    EX --> K{"Exam score dropped?"}
+    K -- no --> KEEP["Keep new version, log the cycle"]
+    K -- yes --> RB["Automatic rollback"]
+```
+
+Limits: one cycle per hour, admins trigger it from the House agents lab (`/admin`), every cycle is logged. Owners' agents are never auto-trained.
+
+**4. Live voice call (Voxtral).** The browser never sees the API key; the backend relays audio over an authenticated WebSocket.
+
+```mermaid
+sequenceDiagram
+    participant B as Browser mic
+    participant S as Red Room backend (Clerk-verified WebSocket)
+    participant STT as Voxtral Mini Transcribe Realtime 3
+    participant LLM as Large 4 agent
+    participant TTS as Voxtral Mini TTS 3
+    B->>S: audio chunks
+    S->>STT: stream
+    STT-->>S: live transcript + detected language
+    S->>LLM: caller turn (answer in caller's language)
+    LLM-->>S: reply, sentence by sentence
+    S->>TTS: first sentence immediately
+    TTS-->>B: agent voice (barge-in stops playback)
+```
+
+**5. Building Red Room with Mistral Vibe.** Vibe CLI and Desktop on Large 4 wrote the backend, ran tests and merged branches across parallel sessions. The Red Room MCP server ([docs/MCP.md](docs/MCP.md)) lets any Vibe session list agents, attack one, read its logbook, retest and publish without leaving the terminal.
 
 ## Why it fixes causes, not examples
 
@@ -280,9 +371,11 @@ Required variables, by name: `MISTRAL_API_KEY`, `MISTRAL_MODEL_MAIN`, `MISTRAL_M
 
 Full steps are in [docs/DEPLOY.md](docs/DEPLOY.md).
 
-## Demo
+## Live links
 
-Demo video: TBD, coming with the hackathon submission.
+- Frontend: https://red-room-steel.vercel.app (auto-deploys from `main`)
+- Backend: https://computing-murray-florida-devon.trycloudflare.com (`/health`), running on a laptop during the event. If the tunnel restarts the URL changes; see [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md).
+- Demo videos: see [Demos](#demos). Demo script: [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md).
 
 ## Team
 
