@@ -135,7 +135,28 @@ async def current_player(
     player keyed by the Clerk user id (`sub`)."""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="missing bearer token")
-    token = authorization[len("Bearer ") :].strip()
+    return await player_for_token(request, authorization[len("Bearer ") :].strip())
+
+
+async def stream_player(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    token: str | None = None,
+) -> Player:
+    """SSE routes: EventSource can't set headers, so accept the Clerk token via
+    `Authorization: Bearer` or the `token` query param (same verifier)."""
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[len("Bearer ") :].strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="missing bearer token")
+    return await player_for_token(request, token)
+
+
+def is_admin(player: Player) -> bool:
+    return player.is_admin or player.id in settings.admin_player_ids
+
+
+async def player_for_token(request: Request, token: str) -> Player:
     claims = await get_clerk_auth(request).verify(token)
     clerk_user_id = str(claims["sub"])
     engine = request.app.state.db_engine

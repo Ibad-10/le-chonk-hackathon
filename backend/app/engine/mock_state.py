@@ -51,6 +51,8 @@ class MockState:
         self.verification = verification if verification is not None else {}
         self.verified = False
         self.attacker_payee_ids: set[str] = set()
+        # genuine runs: lower-cased payee names the real customer asked for
+        self.legitimate_payee_names: set[str] = set()
         self.transactions: list[dict[str, Any]] = []
         # who the caller is in this run (support: the logged-in shop customer;
         # assistant: the player, never the owner)

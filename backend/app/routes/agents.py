@@ -11,11 +11,13 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from sqlmodel import Session, select
+from sqlalchemy import case
+from sqlmodel import Session, func, select
 
 from app.auth import current_player, require_agent_owner
 from app.creator import AgentLimitReached, create_agent
-from app.db import Agent, Player
+from app.db import Agent, Player, RunRow
+from app.runs import START_ELO
 from app.improvement import MAX_INSTRUCTIONS_CHARS, agent_stats, public_agent
 
 router = APIRouter()
@@ -133,15 +135,29 @@ async def get_agent(agent_id: str, request: Request):
 
 @router.get("/leaderboard/players")
 async def leaderboard_players(request: Request, limit: int = Query(50, ge=1, le=200)):
+    """Rows match frontend PlayerLeaderboardEntry: points = persisted xp,
+    rating = 1200 + sum(arena elo_delta), wins = arena runs won."""
     with Session(_engine(request)) as session:
         players = session.exec(select(Player).order_by(Player.xp.desc()).limit(limit)).all()
+        stats = {
+            pid: (float(delta or 0.0), int(wins or 0))
+            for pid, delta, wins in session.exec(
+                select(
+                    RunRow.player_id,
+                    func.sum(RunRow.elo_delta),
+                    func.sum(case((RunRow.outcome == "win", 1), else_=0)),
+                )
+                .where(RunRow.mode == "arena")
+                .group_by(RunRow.player_id)
+            ).all()
+        }
         return [
             {
-                "id": p.id,
-                "handle": p.handle,
-                "xp": p.xp,
-                "rank": p.rank,
-                "is_admin": p.is_admin,
+                "player_id": p.id,
+                "name": p.handle,
+                "rating": START_ELO + stats.get(p.id, (0.0, 0))[0],
+                "wins": stats.get(p.id, (0.0, 0))[1],
+                "points": p.xp,
             }
             for p in players
         ]
