@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import os
+
 
 class Lives:
-    MAX_LIVES = 3
-    REFILL_S = 300.0
+    # LIVES_MAX / LIVES_REFILL_S env vars raise the limits for live demos.
+    MAX_LIVES = int(os.environ.get("LIVES_MAX", "3"))
+    REFILL_S = float(os.environ.get("LIVES_REFILL_S", "300"))
 
     def __init__(self, now: float, count: int | None = None) -> None:
         self._count = self.MAX_LIVES if count is None else count

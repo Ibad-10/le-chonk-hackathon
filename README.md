@@ -374,7 +374,7 @@ Full steps are in [docs/DEPLOY.md](docs/DEPLOY.md).
 ## Live links
 
 - Frontend: https://red-room-steel.vercel.app (auto-deploys from `main`)
-- Backend: https://permits-commissions-scholars-parental.trycloudflare.com (`/health`), running on a laptop during the event. If the tunnel restarts the URL changes; see [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md).
+- Backend: https://brings-designation-trailer-automation.trycloudflare.com (`/health`), running on a laptop during the event. If the tunnel restarts the URL changes; see [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md).
 - Demo videos: see [Demos](#demos). Demo script: [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md).
 
 ## Team
