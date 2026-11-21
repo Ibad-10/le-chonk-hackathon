@@ -4,7 +4,7 @@ Claude's agents stopped on a usage limit. Their unfinished work is saved as bran
 
 ## Live links
 - Frontend: https://red-room-steel.vercel.app (auto-deploys on every push to `main`; Vercel root directory = `frontend`)
-- Backend: runs on Ibad's laptop behind a Cloudflare quick tunnel: https://computing-murray-florida-devon.trycloudflare.com (`/health`). The URL changes if the tunnel restarts; then update Vercel env `NEXT_PUBLIC_BACKEND_URL` (Production and Preview) and push. Free Hugging Face Docker Spaces need PRO; `backend/scripts/deploy_hf.py` is ready once the account has it. Render's free tier works but sleeps after 15 minutes.
+- Backend: runs on Ibad's laptop behind a Cloudflare quick tunnel: https://permits-commissions-scholars-parental.trycloudflare.com (`/health`). The URL changes if the tunnel restarts; then update Vercel env `NEXT_PUBLIC_BACKEND_URL` (Production and Preview) and push. Free Hugging Face Docker Spaces need PRO; `backend/scripts/deploy_hf.py` is ready once the account has it. Render's free tier works but sleeps after 15 minutes.
 - Open access: `OPEN_ACCESS=1` (default) lets every signed-in player use every agent's owner tools and the admin lab, for the hackathon. Set `OPEN_ACCESS=0` to restore strict ownership.
 
 ## Unfinished branches (on GitHub)
