@@ -10,6 +10,8 @@ A game where people try to talk AI agents into doing something they shouldn't (s
 
 Tagline: "Talk them into it. If you can."
 
+The UI is the teammate's area now.
+
 ## 2. Hackathon tracks we are targeting
 
 - Track 1 (anything around Mistral Vibe and Large 4: agents, skills, MCPs, scheduled tasks): every commit in this repo is written by Mistral Vibe on Large 4; Red Room MCP server lets Vibe red-team agents; research agent runs on a schedule.
@@ -30,6 +32,7 @@ Tagline: "Talk them into it. If you can."
 | `docs/MCP.md` | Red Room MCP server and how to register it in Vibe |
 | `docs/DEPLOY.md`, `docs/DEMO.md` | Deploy runbook; 5-minute pitch script and demo video shot list |
 | `docs/UI_BRIEF.md` | UI overhaul brief (quality bar, colours, fonts, components, 3D fixes, self-check) |
+| `docs/UI_HANDOFF.md` | UI task list for the teammate: current problems, causes and fixes |
 | `README.md` | Public overview with diagrams |
 
 ## 4. Architecture
@@ -52,14 +55,9 @@ Tagline: "Talk them into it. If you can."
 
 | Branch | Status |
 |---|---|
-| `main` | Integrated and reviewed: backend (runs, limits, dealt roles, logbook, analyst, retest, versions, graph, routes, Supabase, Clerk), frontend pages, README |
-| `frontend-v4` | Siege 2D game view; being merged into main now |
-| `base-view` | 3D village + live attack + stars; being merged; known issues: models render white (missing textures), camera framing, troops not visible (fixed in the UI overhaul) |
-| `mcp-server` | Red Room MCP server (reviewed, 17 tests); being merged |
-| `voice-v4` | Live voice call; being merged WITH a security fix (its own token check didn't verify signatures; main's Clerk check replaces it). Do not reuse its `auth.py` |
-| `research-agent` | Research agent + house-agent training cycles (reviewed, 14 tests); next merge |
-| `deploy-prep` | Dockerfile, tunnel script, demo seed, DEPLOY.md, DEMO.md (reviewed); next merge |
-| `team-handover` | This file + CLAUDE.md |
+| `main` | Everything merged and reviewed: backend, frontend pages, Siege, 3D village (rendering broken, see docs/UI_HANDOFF.md), live voice with verified Clerk auth, MCP server, research agent + training, deploy/demo docs, handover |
+| `frontend-v4`, `base-view`, `mcp-server`, `research-agent`, `deploy-prep`, `voice-v4`, `team-handover` | All merged into main; kept only for history |
+| UI work | Teammate branches `ui-polish` from main and opens a PR |
 
 Workflow: one feature branch per task, tests first, small commits, reviewer (Claude) checks before merge, then push. Commit author on this repo is Ibad's identity (see AGENTS.md); do not add AI co-author trailers.
 
@@ -76,7 +74,7 @@ Workflow: one feature branch per task, tests first, small commits, reviewer (Cla
 
 ## 8. What teammates can pick up now
 
-1. UI polish on a branch off main (coordinate with the UI overhaul run; take one area each): home and agent pages; owner dashboard (logbook, draft editor, retest panel, version diff); leaderboards and arena wall; phone layouts at 390 px. Follow docs/UI_BRIEF.md: no emoji, lucide icons, Radix Colors, Instrument Serif + Inter + Geist Mono, shadcn + Magic UI + motion.
+1. UI: follow docs/UI_HANDOFF.md in order (3D village textures, lighting, camera and troops first; then emoji, colours, fonts, components, flow).
 2. 3D village art direction: textures, lighting, grass, troop animation, building variety (Kenney Fantasy Town Kit, Castle Kit, Mini Characters, all CC0).
 3. Pitch deck (5 minutes) and the demo video, from docs/DEMO.md; business slide from docs/COMPETITORS.md and the README.
 4. Test play: play Ava, Max and Pip by text and voice, try to break them, report bugs as GitHub issues with the transcript.
@@ -85,7 +83,7 @@ Workflow: one feature branch per task, tests first, small commits, reviewer (Cla
 ## 9. Known issues and decisions
 
 - 3D village currently renders white and empty; fix is in docs/UI_BRIEF.md section "3D village fixes".
-- Voice latency: about 5 s end of speech to first audio, up to 10 s on slow turns; agent turn on Large 4 low reasoning is the main cost.
+- Voice latency: about 5 s end of speech to first audio, up to 10 s on slow turns; agent turn on Large 4 low reasoning is the main cost. Pipeline overhead 1.3-4 s; Large 4 time-to-first-token occasionally spikes to about 25 s; set VOICE_AGENT_MODEL to the fallback model in .env if it happens during the demo.
 - Clerk tokens minted server-side carry no `azp`; accepted only when signed by our Clerk instance with a session id (see backend/app/auth.py).
 - Mistral offline evaluations are Enterprise-only, so we run our own exam and retest.
 - Blockchain bounties were dropped; rewards are points, ranks, credits; Stripe test mode bounty is a NICE item.
