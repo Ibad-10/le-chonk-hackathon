@@ -32,6 +32,8 @@ describe("RetestPanel", () => {
     await user.click(screen.getByRole("checkbox", { name: /publish anyway/i }));
     expect(publish).toBeEnabled();
     await user.click(publish);
+    expect(onPublish).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole("button", { name: /confirm publish/i }));
     expect(onPublish).toHaveBeenCalledWith(true);
   });
 

@@ -3,6 +3,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { Geist_Mono, Instrument_Serif, Inter } from "next/font/google";
 
 import Header from "@/components/Header";
+import { Toaster } from "@/components/ui/sonner";
 
 import "./globals.css";
 
@@ -40,6 +41,8 @@ export default function RootLayout({
         <body className="min-h-full flex flex-col">
           <Header />
           <main className="flex-1 relative z-[2]">{children}</main>
+          <Toaster />
+          {/* ponytail: tooltip provider omitted until a page uses Tooltip */}
         </body>
       </html>
     </ClerkProvider>
