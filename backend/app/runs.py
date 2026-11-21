@@ -33,7 +33,7 @@ from app.config import settings
 from app.db import LogbookEntry
 from app.engine.agent_turn import ToolEvent, agent_turn
 from app.engine.mock_state import MockState
-from app.engine.targets import load_target
+from app.creator import load_runtime
 from app.engine.wins import check_win
 from app.lives import Lives
 from app.llm import LLMClient
@@ -124,6 +124,8 @@ class RunSession:
     language_detected: bool = False
     brief: dict[str, Any] | None = None  # v4.1: player-only brief for the dealt role
     need: dict[str, Any] | None = None  # genuine need, when role == "genuine"
+    owner_instructions: str = ""  # creator agents: current version instructions + knowledge
+    knowledge: list[Any] = field(default_factory=list)
 
 
 ScreenFn = Callable[[str], Awaitable[ScreenResult]]
@@ -251,7 +253,7 @@ class RunService:
         spectate: bool = False,
     ) -> Run:
         now = self._now()
-        target = load_target(agent_id)
+        target, owner_instructions, knowledge = load_runtime(self._engine, agent_id)
         if mode == "arena":
             if not self.arena_available(agent_id, now):
                 raise AgentInCooldown(f"agent {agent_id} is in cooldown")
@@ -291,6 +293,8 @@ class RunService:
             language_detected=language != "auto",
             brief=brief,
             need=need,
+            owner_instructions=owner_instructions,
+            knowledge=knowledge,
         )
         return run
 
@@ -418,6 +422,8 @@ class RunService:
                 session.state,
                 run.transcript,
                 language=run.language,
+                owner_instructions=session.owner_instructions,
+                knowledge=session.knowledge,
                 model=settings.voice_agent_model if voice else None,
                 max_tokens=VOICE_AGENT_MAX_TOKENS if voice else None,
                 on_chunk=on_chunk,

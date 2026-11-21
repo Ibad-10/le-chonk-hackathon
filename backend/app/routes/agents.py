@@ -7,12 +7,16 @@ never instructions, knowledge, transcripts, config or the graph.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
-from app.auth import current_player
+from app.auth import current_player, require_agent_owner
+from app.creator import AgentLimitReached, create_agent
 from app.db import Agent, Player
-from app.improvement import agent_stats, public_agent
+from app.improvement import MAX_INSTRUCTIONS_CHARS, agent_stats, public_agent
 
 router = APIRouter()
 
@@ -40,6 +44,80 @@ async def my_agents(request: Request, player: Player = Depends(current_player)):
     with Session(_engine(request)) as session:
         agents = session.exec(select(Agent).where(Agent.owner_id == player.id)).all()
         return [public_agent(a, _engine(request), _run_service(request)) for a in agents]
+
+
+class CreateAgentRequest(BaseModel):
+    name: str = Field(min_length=3, max_length=40)
+    stream: Literal["banking", "support", "assistant"]
+    instructions: str = Field(default="", max_length=MAX_INSTRUCTIONS_CHARS)
+    knowledge: str = Field(default="", max_length=8000)
+    visibility: Literal["public", "private"] = "private"
+
+
+class PatchAgentRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=3, max_length=40)
+    visibility: Literal["public", "private"] | None = None
+
+
+def _owned(request: Request, agent_id: str, player: Player) -> Agent:
+    with Session(_engine(request)) as session:
+        agent = session.get(Agent, agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="agent not found")
+    require_agent_owner(agent, player)
+    return agent
+
+
+@router.post("/agents", status_code=201)
+async def create_agent_route(
+    req: CreateAgentRequest, request: Request, player: Player = Depends(current_player)
+):
+    try:
+        agent = create_agent(
+            _engine(request), player.id, req.name, req.stream,
+            req.instructions, req.knowledge, req.visibility,
+        )
+    except AgentLimitReached:
+        raise HTTPException(status_code=409, detail="max 3 agents per player")
+    return public_agent(agent, _engine(request), _run_service(request))
+
+
+@router.patch("/agents/{agent_id}")
+async def patch_agent(
+    agent_id: str, req: PatchAgentRequest, request: Request, player: Player = Depends(current_player)
+):
+    _owned(request, agent_id, player)
+    with Session(_engine(request)) as session:
+        agent = session.get(Agent, agent_id)
+        if req.name is not None:
+            agent.name = req.name
+            if agent.config:
+                agent.config = {**agent.config, "name": req.name}
+        if req.visibility is not None:
+            agent.visibility = req.visibility
+            if agent.config:
+                agent.config = {**agent.config, "visibility": req.visibility}
+        session.add(agent)
+        session.commit()
+        session.refresh(agent)
+    return public_agent(agent, _engine(request), _run_service(request))
+
+
+@router.post("/agents/{agent_id}/placement")
+async def start_placement(agent_id: str, request: Request, player: Player = Depends(current_player)):
+    _owned(request, agent_id, player)
+    return {"job_id": request.app.state.placement_service.start(agent_id)}
+
+
+@router.get("/agents/{agent_id}/placement/{job_id}")
+async def get_placement(
+    agent_id: str, job_id: str, request: Request, player: Player = Depends(current_player)
+):
+    _owned(request, agent_id, player)
+    job = request.app.state.placement_service.get(job_id)
+    if job is None or job["agent_id"] != agent_id:
+        raise HTTPException(status_code=404, detail="placement job not found")
+    return job
 
 
 @router.get("/agents/{agent_id}")
