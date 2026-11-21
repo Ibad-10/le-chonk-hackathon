@@ -1,0 +1,456 @@
+/* --- Siege (lane battle view) ------------------------------------------- */
+
+.siege-hud {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.8rem;
+}
+
+.siege-energy {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  max-width: 220px;
+}
+
+.siege-pip {
+  width: 8px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--color-room-panel-2);
+  border: 1px solid var(--color-room-line);
+}
+
+.siege-pip-on {
+  background: var(--color-room-red);
+  border-color: var(--color-room-red);
+}
+
+.siege-clock {
+  color: var(--color-room-text);
+  font-weight: 600;
+}
+
+.siege-cooldown {
+  color: var(--color-room-red-soft);
+  font-weight: 600;
+}
+
+.siege-banner {
+  padding: 0.15rem 0.6rem;
+  border-radius: 9999px;
+  font-weight: 700;
+  font-size: 0.8rem;
+  border: 1px solid var(--color-room-line);
+  background: var(--color-room-panel-2);
+  color: var(--color-room-text);
+}
+
+.siege-banner-vault_breached {
+  background: var(--color-room-red);
+  border-color: var(--color-room-red);
+  color: #fff;
+}
+
+.siege-banner-fortress_held {
+  color: var(--color-room-muted);
+}
+
+/* field: DOM order fortress -> lane -> camp.
+   Mobile (column): fortress top, camp bottom => lane runs bottom-to-top.
+   Wide (row-reverse): fortress right, camp left. */
+.siege-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+@media (min-width: 640px) {
+  .siege-field {
+    flex-direction: row-reverse;
+    align-items: stretch;
+  }
+}
+
+.siege-lane {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 190px;
+  border-radius: 0.75rem;
+  border: 1px dashed var(--color-room-line);
+  background:
+    radial-gradient(120% 90% at 50% 110%, rgba(229, 32, 43, 0.10), transparent 60%),
+    var(--color-room-bg);
+  overflow: hidden;
+}
+
+@media (min-width: 640px) {
+  .siege-lane {
+    min-height: 150px;
+    min-width: 0;
+  }
+}
+
+/* movers travel along --p (0 = camp end, 1 = fortress end) */
+.siege-mover {
+  position: absolute;
+  left: calc(var(--p) * 100%);
+  bottom: 10px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  will-change: left, bottom;
+  z-index: 2;
+}
+
+@media (max-width: 639px) {
+  .siege-mover {
+    left: 50%;
+    bottom: calc(6px + var(--p) * 82%);
+    transform: translateX(-50%);
+  }
+}
+
+.siege-sprite {
+  width: 34px;
+  height: 34px;
+  image-rendering: pixelated;
+  object-fit: contain;
+}
+
+.siege-defender .siege-sprite {
+  width: 38px;
+  height: 38px;
+}
+
+.siege-parried .siege-sprite {
+  opacity: 0.25;
+}
+
+.siege-troop-label {
+  font-size: 0.6rem;
+  line-height: 1;
+  color: var(--color-room-muted);
+  background: rgba(10, 5, 7, 0.75);
+  padding: 1px 4px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+/* speech bubbles: fixed max size, one line, ellipsis; full text on hover/focus */
+.siege-bubble {
+  position: relative;
+  display: inline-block;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: #fdf6f7;
+  color: #1a0d10;
+  font-size: 0.7rem;
+  line-height: 1.25;
+  padding: 3px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  cursor: help;
+}
+
+.siege-bubble-agent {
+  background: var(--color-room-panel-2);
+  color: var(--color-room-text);
+  border-color: var(--color-room-line);
+}
+
+.siege-bubble:hover::after,
+.siege-bubble:focus::after {
+  content: attr(data-full);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 260px;
+  white-space: normal;
+  word-break: break-word;
+  background: #000;
+  color: #fff;
+  font-size: 0.7rem;
+  padding: 6px 8px;
+  border-radius: 6px;
+  z-index: 30;
+  pointer-events: none;
+}
+
+.siege-fortress {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.siege-towers {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-end;
+}
+
+.siege-tower {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 76px;
+}
+
+.siege-tower-name {
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-room-muted);
+}
+
+.siege-tower-imgwrap {
+  position: relative;
+  display: inline-block;
+}
+
+.siege-tower-img {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.siege-hp {
+  display: block;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-room-panel-2);
+  border: 1px solid var(--color-room-line);
+  overflow: hidden;
+}
+
+.siege-hp-fill {
+  display: block;
+  height: 100%;
+  background: var(--color-room-red);
+  transition: width 0.4s ease;
+}
+
+.siege-hp-empty {
+  background: var(--color-room-line);
+}
+
+.siege-crack {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.siege-camp {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.siege-camp-img {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.siege-camp-label {
+  font-size: 0.65rem;
+  color: var(--color-room-muted);
+}
+
+.siege-tree {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.siege-tree-1 {
+  top: 8px;
+  left: 8px;
+}
+
+.siege-tree-2 {
+  bottom: 8px;
+  right: 10px;
+}
+
+.siege-scaffold-wrap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: rgba(10, 5, 7, 0.55);
+  border-radius: 0.5rem;
+  z-index: 5;
+}
+
+.siege-scaffold {
+  width: 54px;
+  height: 54px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  opacity: 0.9;
+}
+
+/* effects */
+.siege-fx {
+  position: absolute;
+  pointer-events: none;
+  object-fit: contain;
+}
+
+.siege-puff {
+  left: calc(var(--p) * 100%);
+  bottom: 24px;
+  width: 44px;
+  height: 44px;
+  transform: translateX(-50%);
+  animation: siege-puff 0.7s ease-out forwards;
+  z-index: 3;
+}
+
+@media (max-width: 639px) {
+  .siege-puff {
+    left: 50%;
+    bottom: calc(20px + var(--p) * 82%);
+  }
+}
+
+.siege-shield {
+  width: 60px;
+  height: 60px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  animation: siege-flash 0.6s ease-out forwards;
+}
+
+.siege-flame {
+  width: 46px;
+  height: 46px;
+  left: 50%;
+  top: 20%;
+  transform: translateX(-50%);
+  animation: siege-flash 1.2s ease-out forwards;
+}
+
+.siege-smoke {
+  width: 54px;
+  height: 54px;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+  animation: siege-rise 1.4s ease-out forwards;
+}
+
+.siege-debris {
+  width: 40px;
+  height: 40px;
+  left: 50%;
+  top: 40%;
+  transform: translateX(-50%);
+  animation: siege-fall 0.8s ease-in forwards;
+}
+
+.siege-coin {
+  width: 22px;
+  height: 22px;
+  left: 50%;
+  top: 45%;
+  animation: siege-coin 0.9s ease-out forwards;
+}
+
+.siege-coin-1 { animation-delay: 0.08s; --dx: -34px; }
+.siege-coin-2 { animation-delay: 0.16s; --dx: 30px; }
+.siege-coin-3 { animation-delay: 0.05s; --dx: -18px; }
+.siege-coin-4 { animation-delay: 0.12s; --dx: 20px; }
+
+/* tower poses */
+.siege-slam {
+  animation: siege-slam 0.45s ease-in-out;
+}
+
+.siege-hit {
+  animation: siege-shake 0.5s ease-in-out;
+}
+
+.siege-fallen {
+  animation: siege-crumble 1s ease-in forwards;
+  transform-origin: 50% 100%;
+}
+
+.siege-steps {
+  margin-top: 0.75rem;
+  padding-left: 1.25rem;
+  font-size: 0.8rem;
+  color: var(--color-room-text);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+@keyframes siege-puff {
+  0% { opacity: 0.9; transform: translateX(-50%) scale(0.6); }
+  100% { opacity: 0; transform: translateX(-50%) scale(1.8); }
+}
+
+@keyframes siege-flash {
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(0.4); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.6); }
+}
+
+@keyframes siege-rise {
+  0% { opacity: 0.9; transform: translateX(-50%) translateY(6px); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-14px); }
+}
+
+@keyframes siege-fall {
+  0% { opacity: 1; transform: translateX(-50%) translateY(-8px) rotate(0deg); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(16px) rotate(35deg); }
+}
+
+@keyframes siege-coin {
+  0% { opacity: 1; transform: translate(-50%, 0) scale(0.6); }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--dx, 0px)), -46px) scale(1.2); }
+}
+
+@keyframes siege-slam {
+  0%, 100% { transform: scaleY(1); }
+  40% { transform: scaleY(0.82); }
+}
+
+@keyframes siege-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  60% { transform: translateX(3px); }
+}
+
+@keyframes siege-crumble {
+  0% { transform: rotate(0deg) translateY(0); opacity: 1; }
+  100% { transform: rotate(-14deg) translateY(14px); opacity: 0.25; }
+}
