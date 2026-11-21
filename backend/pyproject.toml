@@ -15,6 +15,7 @@ dependencies = [
     "sqlmodel",
     "pytest",
     "pytest-asyncio",
+    "psycopg[binary]>=3.3.9",
 ]
 
 [tool.pytest.ini_options]

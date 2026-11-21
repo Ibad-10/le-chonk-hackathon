@@ -35,6 +35,34 @@ def _engine(tmp_path: Path):
     return engine
 
 
+def test_make_engine_normalises_postgres_schemes_to_psycopg():
+    """v4.1: postgres:// and postgresql:// both become postgresql+psycopg://."""
+    for scheme in ("postgres://", "postgresql://", "postgresql+psycopg://"):
+        engine = make_engine(f"{scheme}user:pass@db.host:5432/redroom")
+        assert engine.url.drivername == "postgresql+psycopg", scheme
+        assert engine.url.host == "db.host"
+
+
+def test_make_engine_postgres_uses_pool_pre_ping():
+    engine = make_engine("postgresql+psycopg://user:pass@db.host:5432/redroom")
+    assert engine.pool._pre_ping is True  # stale pooled connections are recycled
+
+
+def test_make_engine_sqlite_keeps_check_same_thread():
+    engine = make_engine("sqlite:///./redroom.db")
+    assert engine.url.drivername == "sqlite"
+    assert engine.pool._pre_ping is False
+
+
+def test_init_db_and_seed_are_idempotent(tmp_path):
+    engine = _engine(tmp_path)
+    init_db(engine)  # second create_all must not fail
+    seed_house_agents(engine)
+    seed_house_agents(engine)  # second seed must not duplicate
+    with Session(engine) as session:
+        assert len(session.exec(select(Agent)).all()) == len(HOUSE_AGENT_IDS)
+
+
 def test_all_migration_tables_exist(tmp_path):
     engine = _engine(tmp_path)
     tables = {t.name for t in SQLModel.metadata.sorted_tables}

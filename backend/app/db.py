@@ -150,11 +150,25 @@ class PublicEvent(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_now)
 
 
+def normalise_database_url(url: str) -> str:
+    """v4.1: bare `postgres://` / `postgresql://` URLs use the psycopg driver."""
+    if url.startswith("postgres://"):
+        return "postgresql+psycopg://" + url[len("postgres://") :]
+    if url.startswith("postgresql://"):
+        return "postgresql+psycopg://" + url[len("postgresql://") :]
+    return url
+
+
 def make_engine(url: str | None = None) -> Engine:
-    """Engine for `DATABASE_URL` (default sqlite:///./redroom.db)."""
-    database_url = url or settings.database_url
-    connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
-    return create_engine(database_url, connect_args=connect_args)
+    """Engine for `DATABASE_URL` (default sqlite:///./redroom.db).
+
+    Postgres (Supabase) URLs go through psycopg with `pool_pre_ping=True` so
+    stale pooled connections are recycled; SQLite keeps check_same_thread.
+    """
+    database_url = normalise_database_url(url or settings.database_url)
+    if database_url.startswith("sqlite"):
+        return create_engine(database_url, connect_args={"check_same_thread": False})
+    return create_engine(database_url, pool_pre_ping=True)
 
 
 def init_db(engine: Engine) -> None:
@@ -192,3 +206,33 @@ def seed_house_agents(engine: Engine) -> list[str]:
             seeded.append(agent_id)
         session.commit()
     return seeded
+
+
+def bootstrap_from_env() -> list[str]:
+    """One-shot startup against `DATABASE_URL` from the repo-root .env.
+
+    Runs create_all + house-agent seed once (idempotent) and returns the table
+    names present. An empty `DATABASE_URL` returns [] (caller skips and says
+    so). Never prints or logs the URL.
+    """
+    import os
+
+    from dotenv import load_dotenv
+    from sqlalchemy import inspect
+
+    load_dotenv(REPO_ROOT / ".env")
+    raw = os.environ.get("DATABASE_URL", "")
+    if not raw:
+        return []
+    engine = make_engine(raw)
+    init_db(engine)
+    seed_house_agents(engine)
+    return sorted(inspect(engine).get_table_names())
+
+
+if __name__ == "__main__":
+    tables = bootstrap_from_env()
+    if not tables:
+        print("DATABASE_URL is empty in ../.env; skipping (SQLite stays the default for tests).")
+    else:
+        print("tables:", ", ".join(tables))
