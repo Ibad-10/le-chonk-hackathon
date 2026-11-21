@@ -2,19 +2,26 @@
 
 import { useEffect, useState } from "react";
 
-import { getLeaderboards } from "@/lib/api";
-import { STREAMS, type Leaderboards, type Stream } from "@/lib/types";
+import { getAgentLeaderboard, getPlayersLeaderboard } from "@/lib/api";
+
+import { STREAMS, type AgentLeaderboardEntry, type PlayerLeaderboardEntry, type Stream } from "@/lib/types";
 
 type Tab = "players" | "agents";
 
 export default function LeaderboardPage() {
   const [tab, setTab] = useState<Tab>("players");
   const [stream, setStream] = useState<Stream>("banking");
-  const [data, setData] = useState<Leaderboards | null>(null);
+  const [players, setPlayers] = useState<PlayerLeaderboardEntry[] | null>(null);
+  const [agents, setAgents] = useState<AgentLeaderboardEntry[] | null>(null);
 
   useEffect(() => {
-    getLeaderboards().then(setData).catch(() => setData(null));
+    getPlayersLeaderboard().then(setPlayers).catch(() => setPlayers([]));
   }, []);
+
+  useEffect(() => {
+    setAgents(null);
+    getAgentLeaderboard(stream).then(setAgents).catch(() => setAgents([]));
+  }, [stream]);
 
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-10 sm:px-6">
@@ -64,9 +71,10 @@ export default function LeaderboardPage() {
         </div>
       )}
 
-      {!data && <p className="mt-6 text-room-muted">Loading…</p>}
+      {tab === "players" && !players && <p className="mt-6 text-room-muted">Loading…</p>}
+      {tab === "agents" && !agents && <p className="mt-6 text-room-muted">Loading…</p>}
 
-      {data && tab === "players" && (
+      {tab === "players" && players && (
         <table className="mt-6 w-full border-collapse text-left text-sm">
           <thead>
             <tr className="border-b border-room-line text-room-muted">
@@ -78,7 +86,7 @@ export default function LeaderboardPage() {
             </tr>
           </thead>
           <tbody>
-            {data.players.map((p, i) => (
+            {players.map((p, i) => (
               <tr key={p.player_id} className="border-b border-room-line/50">
                 <td className="py-2 pr-4 font-mono text-room-muted">{i + 1}</td>
                 <td className="py-2 pr-4 text-room-text">{p.name}</td>
@@ -91,7 +99,7 @@ export default function LeaderboardPage() {
         </table>
       )}
 
-      {data && tab === "agents" && (
+      {tab === "agents" && agents && (
         <table className="mt-6 w-full border-collapse text-left text-sm">
           <thead>
             <tr className="border-b border-room-line text-room-muted">
@@ -103,8 +111,8 @@ export default function LeaderboardPage() {
             </tr>
           </thead>
           <tbody>
-            {(data.agents_by_stream[stream] ?? []).map((a, i) => (
-              <tr key={a.agent_id} className="border-b border-room-line/50">
+            {agents.map((a, i) => (
+              <tr key={a.id} className="border-b border-room-line/50">
                 <td className="py-2 pr-4 font-mono text-room-muted">{i + 1}</td>
                 <td className="py-2 pr-4 text-room-text">{a.name}</td>
                 <td className="py-2 pr-4 font-mono text-room-text">
@@ -113,7 +121,7 @@ export default function LeaderboardPage() {
                 <td className="py-2 pr-4 font-mono text-room-text">
                   {a.grade ?? "—"}
                 </td>
-                <td className="py-2 font-mono text-room-text">v{a.version}</td>
+                <td className="py-2 font-mono text-room-text">v{a.current_version}</td>
               </tr>
             ))}
           </tbody>

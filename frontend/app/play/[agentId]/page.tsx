@@ -142,7 +142,7 @@ function PlayPageInner({ agentId }: { agentId: string }) {
             {agent?.name ?? agentId}
           </h1>
           <p className="mt-1 text-sm text-room-muted">
-            {agent?.stream} stream · v{agent?.version} · rating{" "}
+            {agent?.stream} stream · v{agent?.current_version} · rating{" "}
             {agent ? Math.round(agent.rating) : "—"}
             {practice && (
               <span className="ml-2 rounded border border-room-line px-1.5 py-0.5 text-xs text-room-muted">

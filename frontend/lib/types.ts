@@ -8,25 +8,29 @@ export const STREAMS: Stream[] = ["banking", "support", "assistant"];
 
 export type Grade = "A" | "B" | "C" | "D" | "E" | "F";
 
-export interface AgentStats {
-  runs: number;
-  losses: number;
-  blocks: number;
-  generalisation_score: number | null; // sibling variants blocked / tried
-}
-
-export interface Agent {
+// GET /agents — summary shape (no stats, no owner_id).
+export interface AgentSummary {
   id: string;
   name: string;
   stream: Stream;
-  house: boolean; // Red Room house agent (Ava, Max, Pip)
-  owner_id: string | null;
-  version: string; // e.g. "2.3"
   rating: number; // Elo, never reset between versions
   rating_deviation: number; // Glicko-style uncertainty (widened after publish)
   grade: Grade | null; // from the held-out exam
   helpfulness: number | null; // genuine requests completed / attempted
+  current_version: string; // e.g. "2.3"
   cooldown_until: string | null; // ISO datetime; agent hidden from arena until then
+  is_house: boolean; // Red Room house agent (Ava, Max, Pip)
+}
+
+export interface AgentStats {
+  runs: number;
+  breaks: number; // runs the player won
+  holds: number; // runs the agent held
+}
+
+// GET /agents/{id} — summary + stats.
+export interface Agent extends AgentSummary {
+  owner_id: string | null;
   stats: AgentStats;
 }
 
@@ -147,10 +151,18 @@ export interface Logbook {
 }
 
 // --- drafts, retest, publish --------------------------------------------------
+// POST /agents/{id}/drafts takes {instructions, knowledge} and returns a
+// DraftRecord with a server-assigned id; drafts are then addressed as
+// /agents/{id}/drafts/{d}.
 
 export interface Draft {
   instructions: string; // owner instructions, max 2000 chars
   knowledge: string; // owner knowledge (FAQs, policies)
+}
+
+export interface DraftRecord extends Draft {
+  id: string;
+  created_at: string; // ISO datetime
 }
 
 export const MAX_INSTRUCTIONS_CHARS = 2000;
@@ -188,6 +200,27 @@ export interface RetestReport {
   genuine_newly_blocked: string[]; // genuine-customer case ids the draft now blocks
 }
 
+// POST /agents/{id}/drafts/{d}/retest -> {job_id}; GET /agents/{id}/retest/{job}
+// returns progress plus the report once finished.
+export type RetestJobStatus = "queued" | "running" | "done" | "error";
+
+export interface RetestJob {
+  job_id: string;
+  agent_id: string;
+  draft_id: string;
+  status: RetestJobStatus;
+  progress: { done: number; total: number };
+  report: RetestReport | null; // null until status === "done"
+}
+
+// GET /agents/{id}/versions/diff?from=&to=
+export interface VersionDiff {
+  from: string;
+  to: string;
+  instructions: { from: string; to: string };
+  knowledge: { from: string; to: string };
+}
+
 // --- knowledge graph (owner-only) ---------------------------------------------
 
 export type GraphNodeType = "version" | "attack" | "root_cause" | "learned";
@@ -213,6 +246,7 @@ export interface KnowledgeGraph {
 }
 
 // --- leaderboards ---------------------------------------------------------------
+// GET /leaderboard/players and GET /leaderboard/agents?stream=
 
 export interface PlayerLeaderboardEntry {
   player_id: string;
@@ -223,16 +257,35 @@ export interface PlayerLeaderboardEntry {
 }
 
 export interface AgentLeaderboardEntry {
-  agent_id: string;
+  id: string;
   name: string;
   stream: Stream;
   rating: number;
   rating_deviation: number;
   grade: Grade | null;
-  version: string;
+  current_version: string;
 }
 
-export interface Leaderboards {
-  players: PlayerLeaderboardEntry[];
-  agents_by_stream: Record<Stream, AgentLeaderboardEntry[]>;
+// --- arena wall (projector) ------------------------------------------------------
+// Public, privacy-safe events for the big screen. Tactic family only — never
+// transcripts, players or tool arguments.
+
+export type ArenaEventKind = "agent_broken" | "version_published";
+
+export interface ArenaEvent {
+  id: string;
+  kind: ArenaEventKind;
+  agent_name: string;
+  tactic_family: string | null; // e.g. "emotional_emergency"; null for publishes
+  version: string | null; // for version_published
+  at: string; // ISO datetime
+}
+
+// "Now playing" cards for calls whose players opted in: captions only.
+export interface NowPlayingCard {
+  run_id: string;
+  agent_name: string;
+  stream: Stream;
+  captions: string[]; // last public captions, no private data
+  started_at: string;
 }

@@ -1,31 +1,52 @@
 // Typed API client for the Red Room backend.
 //
-// Real routes (backend/app/routes/runs.py, backend/app/main.py):
-//   POST /runs, POST /runs/{id}/message, GET /runs/{id}/stream (SSE chunk/done),
-//   POST /runs/{id}/end, GET /health.
-// Routes not built yet (agents, logbook, retest, publish, graph, leaderboards):
-// every call here falls back to the clearly marked mock in lib/mock.ts when the
-// backend answers 404, so pages still render.
+// Routes (backend builder, v4):
+//   public: GET /agents, GET /agents/{id}, GET /leaderboard/players,
+//           GET /leaderboard/agents?stream=, GET /agents/{id}/graph,
+//           POST /runs (mode "arena" | "practice"), POST /runs/{id}/message,
+//           GET /runs/{id}/stream (SSE), POST /runs/{id}/end, GET /health,
+//           GET /events, GET /now-playing (arena wall).
+//   owner (Bearer token): GET /agents/{id}/logbook, POST /agents/{id}/analyse,
+//           POST /agents/{id}/drafts, GET /agents/{id}/drafts/{d},
+//           POST /agents/{id}/drafts/{d}/retest -> {job_id},
+//           GET /agents/{id}/retest/{job},
+//           POST /agents/{id}/drafts/{d}/publish,
+//           GET /agents/{id}/versions/diff?from=&to=.
+// Every call falls back to the clearly marked mock in lib/mock.ts when the
+// backend answers 404 or is unreachable, so pages still render.
 //
 // Auth: pass the Clerk session token; it is sent as `Authorization: Bearer` on
-// every write call (and on authenticated reads).
+// every write call (and on owner reads).
 
 import {
+  MOCK_AGENT_LEADERBOARD,
   MOCK_AGENTS,
+  MOCK_ARENA_EVENTS,
+  MOCK_DRAFTS,
   MOCK_GRAPH,
-  MOCK_LEADERBOARDS,
   MOCK_LOGBOOK,
+  MOCK_NOW_PLAYING,
+  MOCK_PLAYER_LEADERBOARD,
+  MOCK_RETEST_JOB,
   MOCK_RETEST_REPORT,
   MOCK_ROLE_BRIEF,
   MOCK_VERSIONS,
+  MOCK_VERSION_DIFF,
 } from "./mock";
+
 import type {
   Agent,
+  AgentLeaderboardEntry,
+  AgentSummary,
+  ArenaEvent,
   Draft,
+  DraftRecord,
   KnowledgeGraph,
-  Leaderboards,
   Logbook,
   MessageResponse,
+  NowPlayingCard,
+  PlayerLeaderboardEntry,
+  RetestJob,
   RetestReport,
   RoleBrief,
   RunResult,
@@ -33,6 +54,7 @@ import type {
   Stream,
   StreamDoneEvent,
   Version,
+  VersionDiff,
 } from "./types";
 
 const BASE_URL =
@@ -43,8 +65,9 @@ type Token = string | null | undefined;
 
 function headers(token: Token, write: boolean): HeadersInit {
   const h: HeadersInit = { "Content-Type": "application/json" };
-  // Clerk session token on every write call (reads stay public).
+  // Clerk session token on every write call (public reads stay open).
   if (write && token) h["Authorization"] = `Bearer ${token}`;
+  if (!write && token) h["Authorization"] = `Bearer ${token}`;
   return h;
 }
 
@@ -78,7 +101,7 @@ export class ApiError extends Error {
   }
 }
 
-// --- health + runs (real backend routes) -------------------------------------
+// --- health + runs -------------------------------------------------------------
 
 export async function health(): Promise<{ status: string }> {
   const res = await fetch(`${BASE_URL}/health`);
@@ -86,6 +109,7 @@ export async function health(): Promise<{ status: string }> {
   return res.json();
 }
 
+/** POST /runs — mode "arena" (Elo) or "practice" (no Elo). */
 export async function startRun(
   agentId: string,
   opts: { channel?: "text" | "voice"; mode?: "arena" | "practice"; playerId?: string; token?: Token } = {}
@@ -105,8 +129,7 @@ export async function startRun(
       write: true,
     },
     () => {
-      // MOCK fallback: backend route exists, but if it is unreachable we still
-      // let the play page render against a local mock run.
+      // MOCK fallback: backend unreachable -> local mock run so the play page renders.
       return {
         run_id: `mock-${Date.now()}`,
         agent_id: agentId,
@@ -230,12 +253,14 @@ export async function getRoleBrief(runId: string): Promise<RoleBrief> {
   );
 }
 
-// --- agents, leaderboards, logbook, retest, publish, graph (mock until built) --
+// --- agents + leaderboards (public) ----------------------------------------------
 
-export async function listAgents(): Promise<Agent[]> {
-  return request<Agent[]>("/agents", { method: "GET" }, () => MOCK_AGENTS);
+/** GET /agents */
+export async function listAgents(): Promise<AgentSummary[]> {
+  return request<AgentSummary[]>("/agents", { method: "GET" }, () => MOCK_AGENTS);
 }
 
+/** GET /agents/{id} — summary + stats {runs, breaks, holds}. */
 export async function getAgent(id: string): Promise<Agent> {
   return request<Agent>(
     `/agents/${id}`,
@@ -248,32 +273,54 @@ export async function getAgent(id: string): Promise<Agent> {
   );
 }
 
-export async function getMyAgents(token?: Token): Promise<Agent[]> {
-  return request<Agent[]>(
+/** Owner's agents. Route not in the public list yet -> mock. */
+export async function getMyAgents(token?: Token): Promise<AgentSummary[]> {
+  return request<AgentSummary[]>(
     "/agents/mine",
     { method: "GET", token },
-    () => MOCK_AGENTS.filter((a) => a.owner_id !== null)
+    () => MOCK_AGENTS.filter((a) => !a.is_house)
   );
 }
 
-export async function getLeaderboards(): Promise<Leaderboards> {
-  return request<Leaderboards>(
-    "/leaderboards",
+/** GET /leaderboard/players */
+export async function getPlayersLeaderboard(): Promise<PlayerLeaderboardEntry[]> {
+  return request<PlayerLeaderboardEntry[]>(
+    "/leaderboard/players",
     { method: "GET" },
-    () => MOCK_LEADERBOARDS
+    () => MOCK_PLAYER_LEADERBOARD
   );
 }
 
+/** GET /leaderboard/agents?stream= */
 export async function getAgentLeaderboard(
   stream: Stream
-): Promise<Leaderboards["agents_by_stream"][Stream]> {
-  return request(
-    `/leaderboards/agents?stream=${stream}`,
+): Promise<AgentLeaderboardEntry[]> {
+  return request<AgentLeaderboardEntry[]>(
+    `/leaderboard/agents?stream=${stream}`,
     { method: "GET" },
-    () => MOCK_LEADERBOARDS.agents_by_stream[stream] ?? []
+    () => MOCK_AGENT_LEADERBOARD[stream] ?? []
   );
 }
 
+// --- arena wall (public, polled every 5 s) ----------------------------------------
+
+/** GET /events — public ticker events (tactic family only, never transcripts). */
+export async function getArenaEvents(): Promise<ArenaEvent[]> {
+  return request<ArenaEvent[]>("/events", { method: "GET" }, () => MOCK_ARENA_EVENTS);
+}
+
+/** GET /now-playing — opted-in live calls, captions only. */
+export async function getNowPlaying(): Promise<NowPlayingCard[]> {
+  return request<NowPlayingCard[]>(
+    "/now-playing",
+    { method: "GET" },
+    () => MOCK_NOW_PLAYING
+  );
+}
+
+// --- owner routes (Bearer token) ---------------------------------------------------
+
+/** GET /agents/{id}/logbook */
 export async function getLogbook(agentId: string, token?: Token): Promise<Logbook> {
   return request<Logbook>(
     `/agents/${agentId}/logbook`,
@@ -282,19 +329,72 @@ export async function getLogbook(agentId: string, token?: Token): Promise<Logboo
   );
 }
 
-export async function startRetest(
-  agentId: string,
-  draft: Draft,
-  token?: Token
-): Promise<RetestReport> {
-  return request<RetestReport>(
-    `/agents/${agentId}/retest`,
-    { method: "POST", body: JSON.stringify({ draft }), token, write: true },
-    () => MOCK_RETEST_REPORT
+/** POST /agents/{id}/analyse — Large 4 analyst groups losses by root cause. */
+export async function analyseLogbook(agentId: string, token?: Token): Promise<Logbook> {
+  return request<Logbook>(
+    `/agents/${agentId}/analyse`,
+    { method: "POST", body: "{}", token, write: true },
+    () => MOCK_LOGBOOK
   );
 }
 
-export async function getRetestReport(
+/** POST /agents/{id}/drafts — create a draft, returns it with an id. */
+export async function createDraft(
+  agentId: string,
+  draft: Draft,
+  token?: Token
+): Promise<DraftRecord> {
+  return request<DraftRecord>(
+    `/agents/${agentId}/drafts`,
+    { method: "POST", body: JSON.stringify(draft), token, write: true },
+    () => ({ ...MOCK_DRAFTS[0], ...draft, id: MOCK_DRAFTS[0].id })
+  );
+}
+
+/** GET /agents/{id}/drafts/{d} */
+export async function getDraft(
+  agentId: string,
+  draftId: string,
+  token?: Token
+): Promise<DraftRecord> {
+  return request<DraftRecord>(
+    `/agents/${agentId}/drafts/${draftId}`,
+    { method: "GET", token },
+    () => {
+      const found = MOCK_DRAFTS.find((d) => d.id === draftId) ?? MOCK_DRAFTS[0];
+      return found;
+    }
+  );
+}
+
+/** POST /agents/{id}/drafts/{d}/retest -> {job_id} */
+export async function startRetest(
+  agentId: string,
+  draftId: string,
+  token?: Token
+): Promise<{ job_id: string }> {
+  return request<{ job_id: string }>(
+    `/agents/${agentId}/drafts/${draftId}/retest`,
+    { method: "POST", body: "{}", token, write: true },
+    () => ({ job_id: MOCK_RETEST_JOB.job_id })
+  );
+}
+
+/** GET /agents/{id}/retest/{job} — progress + report. */
+export async function getRetestJob(
+  agentId: string,
+  jobId: string,
+  token?: Token
+): Promise<RetestJob> {
+  return request<RetestJob>(
+    `/agents/${agentId}/retest/${jobId}`,
+    { method: "GET", token },
+    () => ({ ...MOCK_RETEST_JOB, agent_id: agentId, job_id: jobId })
+  );
+}
+
+/** GET /agents/{id}/retest/latest — convenience for the last job (mock until built). */
+export async function getLatestRetestReport(
   agentId: string,
   token?: Token
 ): Promise<RetestReport> {
@@ -305,16 +405,17 @@ export async function getRetestReport(
   );
 }
 
-export async function publishVersion(
+/** POST /agents/{id}/drafts/{d}/publish */
+export async function publishDraft(
   agentId: string,
-  draft: Draft,
+  draftId: string,
   opts: { force?: boolean; token?: Token } = {}
 ): Promise<Agent> {
   return request<Agent>(
-    `/agents/${agentId}/publish`,
+    `/agents/${agentId}/drafts/${draftId}/publish`,
     {
       method: "POST",
-      body: JSON.stringify({ draft, force: opts.force ?? false }),
+      body: JSON.stringify({ force: opts.force ?? false }),
       token: opts.token,
       write: true,
     },
@@ -325,6 +426,21 @@ export async function publishVersion(
   );
 }
 
+/** GET /agents/{id}/versions/diff?from=&to= */
+export async function getVersionDiff(
+  agentId: string,
+  from: string,
+  to: string,
+  token?: Token
+): Promise<VersionDiff> {
+  return request<VersionDiff>(
+    `/agents/${agentId}/versions/diff?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    { method: "GET", token },
+    () => ({ ...MOCK_VERSION_DIFF, from, to })
+  );
+}
+
+/** GET /agents/{id}/versions (mock until built) — used to seed the draft editor. */
 export async function getVersions(
   agentId: string,
   token?: Token
@@ -336,6 +452,7 @@ export async function getVersions(
   );
 }
 
+/** GET /agents/{id}/graph — knowledge graph (owner-only page). */
 export async function getGraph(
   agentId: string,
   token?: Token

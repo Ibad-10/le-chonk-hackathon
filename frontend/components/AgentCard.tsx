@@ -3,9 +3,9 @@
 import Link from "next/link";
 
 import CooldownBadge from "@/components/CooldownBadge";
-import type { Agent } from "@/lib/types";
+import type { AgentSummary } from "@/lib/types";
 
-export default function AgentCard({ agent }: { agent: Agent }) {
+export default function AgentCard({ agent }: { agent: AgentSummary }) {
   const inCooldown = !!agent.cooldown_until;
   return (
     <Link
@@ -31,7 +31,7 @@ export default function AgentCard({ agent }: { agent: Agent }) {
             grade {agent.grade}
           </span>
         )}
-        <span className="text-room-muted">v{agent.version}</span>
+        <span className="text-room-muted">v{agent.current_version}</span>
       </div>
       <div className="mt-auto pt-1">
         {inCooldown ? (

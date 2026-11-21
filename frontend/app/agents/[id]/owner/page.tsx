@@ -1,26 +1,37 @@
 "use client";
 
-import { Suspense, use, useCallback, useEffect, useState } from "react";
+import { Suspense, use, useCallback, useEffect, useRef, useState } from "react";
+
 import Link from "next/link";
+
 import { useRouter } from "next/navigation";
+
 import { useAuth } from "@clerk/nextjs";
 
 import RetestPanel from "@/components/RetestPanel";
+
 import {
+  analyseLogbook,
+  createDraft,
   getAgent,
+  getLatestRetestReport,
   getLogbook,
-  getRetestReport,
+  getRetestJob,
+  getVersionDiff,
   getVersions,
-  publishVersion,
+  publishDraft,
   startRetest,
 } from "@/lib/api";
+
 import { MAX_INSTRUCTIONS_CHARS } from "@/lib/types";
+
 import type {
   Agent,
   Draft,
   Logbook,
   RetestReport,
   Version,
+  VersionDiff,
 } from "@/lib/types";
 
 function WeaknessBars({ logbook }: { logbook: Logbook }) {
@@ -49,10 +60,28 @@ function WeaknessBars({ logbook }: { logbook: Logbook }) {
   );
 }
 
-function LogbookSection({ logbook }: { logbook: Logbook }) {
+function LogbookSection({
+  logbook,
+  onAnalyse,
+  analysing,
+}: {
+  logbook: Logbook;
+  onAnalyse: () => void;
+  analysing: boolean;
+}) {
   return (
     <section aria-label="Logbook" className="space-y-4">
-      <h2 className="font-display text-xl text-room-text">Logbook</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-display text-xl text-room-text">Logbook</h2>
+        <button
+          type="button"
+          onClick={onAnalyse}
+          disabled={analysing}
+          className="rounded-md border border-room-line bg-room-panel-2 px-4 py-2 text-sm font-semibold text-room-text hover:border-room-red/70 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {analysing ? "Analysing…" : "Run analysis"}
+        </button>
+      </div>
       {logbook.groups.map((g) => (
         <article
           key={g.root_cause}
@@ -172,10 +201,7 @@ function DraftEditor({
   );
 }
 
-function VersionDiff({ versions }: { versions: Version[] }) {
-  const oldV = versions[0];
-  const newV = versions[versions.length - 1];
-  if (!oldV || !newV || oldV === newV) return null;
+function VersionDiffSection({ diff }: { diff: VersionDiff }) {
   return (
     <section
       aria-label="Version diff"
@@ -185,18 +211,18 @@ function VersionDiff({ versions }: { versions: Version[] }) {
       <div className="mt-3 grid gap-4 md:grid-cols-2">
         <div>
           <h3 className="text-sm font-semibold text-room-muted">
-            v{oldV.version} (published {oldV.published_at.slice(0, 10)})
+            v{diff.from} (published)
           </h3>
           <pre className="mt-1 whitespace-pre-wrap rounded-md bg-room-bg p-3 font-mono text-xs text-room-text">
-            {oldV.instructions}
+            {diff.instructions.from}
           </pre>
         </div>
         <div>
           <h3 className="text-sm font-semibold text-room-muted">
-            draft (would become next version)
+            v{diff.to} (next)
           </h3>
           <pre className="mt-1 whitespace-pre-wrap rounded-md bg-room-bg p-3 font-mono text-xs text-room-text">
-            {newV.instructions}
+            {diff.instructions.to}
           </pre>
         </div>
       </div>
@@ -224,11 +250,15 @@ function OwnerPageInner({ params }: { params: Promise<{ id: string }> }) {
   const [agent, setAgent] = useState<Agent | null>(null);
   const [logbook, setLogbook] = useState<Logbook | null>(null);
   const [versions, setVersions] = useState<Version[]>([]);
+  const [diff, setDiff] = useState<VersionDiff | null>(null);
   const [report, setReport] = useState<RetestReport | null>(null);
   const [running, setRunning] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [analysing, setAnalysing] = useState(false);
   const [draft, setDraft] = useState<Draft>({ instructions: "", knowledge: "" });
+  const [draftId, setDraftId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // owner pages require sign-in: redirect when signed out
   useEffect(() => {
@@ -251,33 +281,71 @@ function OwnerPageInner({ params }: { params: Promise<{ id: string }> }) {
         if (latest)
           setDraft({ instructions: latest.instructions, knowledge: latest.knowledge });
       });
-      getRetestReport(id, token).then(setReport).catch(() => {});
+      getLatestRetestReport(id, token).then(setReport).catch(() => {});
     })();
     return () => {
       cancelled = true;
     };
   }, [id, isLoaded, isSignedIn, getToken]);
 
+  // version diff between the live version and the current draft
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || !agent) return;
+    getToken().then((token) =>
+      getVersionDiff(id, agent.current_version, draftId ?? "draft", token)
+        .then(setDiff)
+        .catch(() => {})
+    );
+  }, [id, agent, draftId, isLoaded, isSignedIn, getToken]);
+
+  useEffect(() => () => {
+    if (pollRef.current) clearInterval(pollRef.current);
+  }, []);
+
+  const onAnalyse = useCallback(async () => {
+    setAnalysing(true);
+    const token = isSignedIn ? await getToken() : null;
+    try {
+      setLogbook(await analyseLogbook(id, token));
+    } finally {
+      setAnalysing(false);
+    }
+  }, [getToken, id, isSignedIn]);
+
   const onRetest = useCallback(async () => {
     setRunning(true);
     setNotice(null);
     const token = isSignedIn ? await getToken() : null;
-    // live progress: poll while the (mock) retest runs
-    const started = await startRetest(id, draft, token);
-    let done = 0;
-    const total = started.progress.total || 12;
-    setReport({ ...started, finished_at: null, progress: { done: 0, total } });
-    const tick = setInterval(() => {
-      done += 1;
-      setReport((r) =>
-        r ? { ...r, progress: { done: Math.min(done, total), total } } : r
-      );
-      if (done >= total) clearInterval(tick);
-    }, 400);
-    const final = await getRetestReport(id, token);
-    clearInterval(tick);
-    setReport(final);
-    setRunning(false);
+    try {
+      // 1. save the editor contents as a draft -> draft id
+      const saved = await createDraft(id, draft, token);
+      setDraftId(saved.id);
+      // 2. start the retest job -> job id
+      const { job_id } = await startRetest(id, saved.id, token);
+      // 3. poll the job until it reports done
+      const job = await new Promise<RetestReport>((resolve, reject) => {
+        pollRef.current = setInterval(() => {
+          getRetestJob(id, job_id, token)
+            .then((j) => {
+              if (j.status === "done" && j.report) {
+                if (pollRef.current) clearInterval(pollRef.current);
+                resolve(j.report);
+              } else if (j.status === "error") {
+                if (pollRef.current) clearInterval(pollRef.current);
+                reject(new Error("retest job errored"));
+              } else if (j.report) {
+                setReport({ ...j.report, finished_at: null, progress: j.progress });
+              }
+            })
+            .catch(reject);
+        }, 500);
+      });
+      setReport(job);
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "retest failed");
+    } finally {
+      setRunning(false);
+    }
   }, [draft, getToken, id, isSignedIn]);
 
   const onPublish = useCallback(
@@ -285,14 +353,21 @@ function OwnerPageInner({ params }: { params: Promise<{ id: string }> }) {
       setPublishing(true);
       const token = isSignedIn ? await getToken() : null;
       try {
-        const published = await publishVersion(id, draft, { force, token });
+        // make sure the current editor contents exist as a draft
+        let did = draftId;
+        if (!did) {
+          const saved = await createDraft(id, draft, token);
+          did = saved.id;
+          setDraftId(did);
+        }
+        const published = await publishDraft(id, did, { force, token });
         setAgent(published);
-        setNotice(`Published v${published.version} — back in the arena.`);
+        setNotice(`Published v${published.current_version} — back in the arena.`);
       } finally {
         setPublishing(false);
       }
     },
-    [draft, getToken, id, isSignedIn]
+    [draft, draftId, getToken, id, isSignedIn]
   );
 
   if (isLoaded && !isSignedIn) {
@@ -314,7 +389,7 @@ function OwnerPageInner({ params }: { params: Promise<{ id: string }> }) {
             {agent.name} <span className="text-room-muted">— owner</span>
           </h1>
           <p className="mt-1 text-sm text-room-muted">
-            v{agent.version} · rating {Math.round(agent.rating)} ±
+            v{agent.current_version} · rating {Math.round(agent.rating)} ±
             {Math.round(agent.rating_deviation)}
             {agent.grade ? ` · grade ${agent.grade}` : ""}
           </p>
@@ -341,7 +416,9 @@ function OwnerPageInner({ params }: { params: Promise<{ id: string }> }) {
         </p>
       )}
 
-      {logbook && <LogbookSection logbook={logbook} />}
+      {logbook && (
+        <LogbookSection logbook={logbook} onAnalyse={() => void onAnalyse()} analysing={analysing} />
+      )}
 
       <DraftEditor draft={draft} setDraft={setDraft} />
 
@@ -353,7 +430,8 @@ function OwnerPageInner({ params }: { params: Promise<{ id: string }> }) {
         publishing={publishing}
       />
 
-      <VersionDiff versions={versions} />
+      {diff && <VersionDiffSection diff={diff} />}
+      {versions.length === 0 && !diff && null}
     </div>
   );
 }

@@ -6,12 +6,12 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 
 import { getMyAgents } from "@/lib/api";
-import type { Agent } from "@/lib/types";
+import type { AgentSummary } from "@/lib/types";
 
 export default function MyAgentsPage() {
   const router = useRouter();
   const { isLoaded, isSignedIn, getToken } = useAuth();
-  const [agents, setAgents] = useState<Agent[] | null>(null);
+  const [agents, setAgents] = useState<AgentSummary[] | null>(null);
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) router.replace("/sign-in");
@@ -41,7 +41,7 @@ export default function MyAgentsPage() {
             <div>
               <p className="font-semibold text-room-text">{a.name}</p>
               <p className="text-sm text-room-muted">
-                {a.stream} · v{a.version} · {Math.round(a.rating)} ±
+                {a.stream} · v{a.current_version} · {Math.round(a.rating)} ±
                 {Math.round(a.rating_deviation)}
               </p>
             </div>

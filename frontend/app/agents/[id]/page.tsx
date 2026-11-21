@@ -54,7 +54,7 @@ function AgentPublicPageInner({
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
       <p className="text-sm uppercase tracking-wide text-room-muted">
-        {agent.stream} stream {agent.house ? "· house agent" : ""}
+        {agent.stream} stream {agent.is_house ? "· house agent" : ""}
       </p>
       <h1 className="mt-1 font-display text-4xl text-room-text">{agent.name}</h1>
 
@@ -63,18 +63,13 @@ function AgentPublicPageInner({
           [
             ["Rating", `${Math.round(agent.rating)} ±${Math.round(agent.rating_deviation)}`],
             ["Grade", agent.grade ?? "not graded"],
-            ["Version", `v${agent.version}`],
+            ["Version", `v${agent.current_version}`],
             [
               "Helpfulness",
               agent.helpfulness == null ? "—" : `${Math.round(agent.helpfulness * 100)}%`,
             ],
-            [
-              "Generalisation",
-              agent.stats.generalisation_score == null
-                ? "—"
-                : agent.stats.generalisation_score.toFixed(2),
-            ],
-            ["Record", `${agent.stats.blocks} held / ${agent.stats.losses} broken`],
+            ["Runs", `${agent.stats.runs}`],
+            ["Record", `${agent.stats.holds} held / ${agent.stats.breaks} broken`],
           ] as [string, string][]
         ).map(([term, value]) => (
           <div

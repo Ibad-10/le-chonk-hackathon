@@ -4,10 +4,10 @@ import { useEffect, useState } from "react";
 
 import AgentCard from "@/components/AgentCard";
 import { listAgents } from "@/lib/api";
-import type { Agent } from "@/lib/types";
+import type { AgentSummary } from "@/lib/types";
 
 export default function ArenaPage() {
-  const [agents, setAgents] = useState<Agent[] | null>(null);
+  const [agents, setAgents] = useState<AgentSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
