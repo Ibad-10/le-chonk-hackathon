@@ -6,7 +6,7 @@ This builds on `MISTRAL_HANDOVER.md`. The idea is decided (Red Room). Nothing fr
 
 ## v4 ranking (current, overrides everything below)
 
-From `docs/superpowers/specs/2026-11-21-red-room-v4.md` section 6; plan tasks from `docs/superpowers/plans/2026-11-21-red-room-v4.md`.
+From `docs/superpowers/specs/2026-11-21-red-room-v4.md` section 6, amended by `docs/superpowers/specs/2026-11-21-red-room-v41.md` section 7 (v4.1 wins); plan tasks from `docs/superpowers/plans/2026-11-21-red-room-v4.md`.
 
 ### MUST (working by 15:30)
 
@@ -21,8 +21,9 @@ From `docs/superpowers/specs/2026-11-21-red-room-v4.md` section 6; plan tasks fr
 | V4-M7 | Retest loop (3x replay + paraphrased variants + genuine cases); fixed failures saved | Proves a fix generalises instead of memorising one attack | V4-6 |
 | V4-M8 | Publish new version; Elo carry-over; cooldown after a loss | Ratings never reset; cooldown stops the same hole being hit again and again | V4-5, V4-6 |
 | V4-M9 | Visual owner-only knowledge graph with learned nodes | Shows what each agent learned and when; private so top agents can't be copied | V4-9 |
-| V4-M10 | Arena page and leaderboards (players, agents), guest sign-in | Room play needs zero-friction join | V4-7 |
+| V4-M10 | Arena page and leaderboards (players, agents), Clerk sign-in with real profiles (v4.1: replaces guest handles) | Room play needs zero-friction join; guests browse and watch, signing in is needed to play or create | V4-7, V4-18 |
 | V4-M11 | Demo video by 17:30 | Required by the event rules | V4-11 |
+| V4-M12 | Supabase Postgres via `DATABASE_URL` (v4.1: replaces SQLite outside tests; SQLite only for tests) | Hosted database from day one; backend is the only writer | V4-18 |
 
 ### SHOULD
 
@@ -35,6 +36,17 @@ From `docs/superpowers/specs/2026-11-21-red-room-v4.md` section 6; plan tasks fr
 | V4-S5 | Red Room MCP server so Vibe can attack an agent and read its logbook | Track 1 MCP demo from inside Vibe | V4-14 |
 | V4-S6 | Badges, ranks, daily scam challenge | Retention and spectacle | V4-16 |
 
+v4.1 SHOULD rows (from `2026-11-21-red-room-v41.md` section 7, after the MUST list):
+
+| ID | Feature | Why it matters | Plan task |
+|---|---|---|---|
+| V41-S1 | Breaking moment: analyst marks the message where the agent gave in, with a one-line reason | Owners see the exact turn that failed | V4-20 |
+| V41-S2 | Version diff with credit: old vs new instructions side by side, which retest failures each version fixed | Owners see which edit mattered | V4-21 |
+| V41-S3 | Helpfulness score with dealt hidden roles (GENUINE_RATE genuine customers) | An agent that blocks everyone can't score well | V4-19 |
+| V41-S4 | Automatic tactic detection: caller persona and tactic family classified from the transcript | Grouping and stats without persona cards | V4-20 |
+| V41-S5 | Weakness by language: analyst reports failure rates per language | Scammers target non-native speakers | V4-20 |
+| V41-S6 | Arena wall: live calls with opt-in captions and alerts on a projector page | Spectacle between pitches | V4-22 |
+
 ### NICE
 
 | ID | Feature | Why it matters | Plan task |
@@ -45,6 +57,15 @@ From `docs/superpowers/specs/2026-11-21-red-room-v4.md` section 6; plan tasks fr
 | V4-N4 | Stripe test-mode bounty for First Blood on house agents | Real-money feel without wallets; replaces testnet bounties | NICE (needs Stripe test keys) |
 | V4-N5 | Generalisation score on the agent page | Rewards cause-level fixes over banned-word lists | V4-6 |
 | V4-N6 | House-agent training cycles with automatic rollback | House agents keep getting harder, with an honest log | V4-13 |
+
+v4.1 NICE rows (from `2026-11-21-red-room-v41.md` section 7):
+
+| ID | Feature | Why it matters | Plan task |
+|---|---|---|---|
+| V41-N1 | Clash Royale style battle view with opt-in spectators | Each message as a soldier marching at the agent's wall; Twitch-style watching only if the player allows | V4-22 |
+| V41-N2 | Sharing: "try my agent" link, private endpoint + embed widget, team workspace sharing | Let others test an agent without seeing its prompt | — |
+| V41-N3 | Export package (instructions, knowledge, regression suite, grade report) | The deliverable an owner takes home | — |
+| V41-N4 | Dashboards, profiles, learning curve, analysis graphs, team leaderboard, robustness report, CI check, notifications | Depth around the core loop | — |
 
 Everything below is the earlier brainstorm, kept for reference; where it conflicts with v4, v4 wins.
 
