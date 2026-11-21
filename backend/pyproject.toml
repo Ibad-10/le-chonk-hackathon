@@ -16,6 +16,7 @@ dependencies = [
     "pytest",
     "pytest-asyncio",
     "psycopg[binary]>=3.3.9",
+    "python-multipart>=0.0.34",
 ]
 
 [tool.pytest.ini_options]

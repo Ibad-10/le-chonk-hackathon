@@ -66,12 +66,20 @@ class VoiceService:
         path: str,
         *,
         json_body: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
         files: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
     ) -> tuple[int, Any]:
-        """One authenticated call to the Mistral API."""
+        """One authenticated call to the Mistral API (JSON body, or multipart
+        when `files` is given, with plain fields in `data`)."""
         async with httpx.AsyncClient(base_url=MISTRAL_API_BASE, timeout=60.0) as client:
-            resp = await client.post(path, json=json_body, files=files, headers=headers or self._headers())
+            resp = await client.post(
+                path,
+                json=json_body,
+                data=data,
+                files=files,
+                headers=headers or self._headers(),
+            )
             payload: Any
             if resp.headers.get("content-type", "").startswith("application/json"):
                 payload = resp.json()
@@ -130,7 +138,7 @@ class VoiceService:
         """Speech in: Voxtral batch transcription (POST /v1/audio/transcriptions)."""
         status, payload = await self._post(
             "/audio/transcriptions",
-            json_body={"model": settings.voxtral_stt_batch_model},
+            data={"model": settings.voxtral_stt_batch_model},
             files={"file": (filename, audio, content_type)},
             headers=self._headers(),
         )
@@ -149,9 +157,13 @@ class VoiceService:
             },
             headers=self._headers(),
         )
-        if status >= 400 or not isinstance(payload, (bytes, bytearray)):
+        if status >= 400:
             raise RuntimeError(f"TTS failed (HTTP {status})")
-        return bytes(payload)
+        if isinstance(payload, dict) and "audio_data" in payload:
+            return base64.b64decode(payload["audio_data"])  # JSON-wrapped audio
+        if isinstance(payload, (bytes, bytearray)):
+            return bytes(payload)
+        raise RuntimeError(f"TTS returned no audio (HTTP {status})")
 
     # -- one turn -----------------------------------------------------------
 

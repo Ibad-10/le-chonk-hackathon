@@ -75,8 +75,8 @@ class FakePost:
         self.api_key = api_key
         self.calls: list[dict] = []
 
-    async def __call__(self, path: str, *, json_body=None, files=None, headers=None):
-        self.calls.append({"path": path, "json": json_body, "files": files, "headers": headers})
+    async def __call__(self, path: str, *, json_body=None, data=None, files=None, headers=None):
+        self.calls.append({"path": path, "json": json_body, "data": data, "files": files, "headers": headers})
         if path.endswith("/audio/transcriptions"):
             return 200, {"text": "what is my balance?"}
         if path.endswith("/audio/speech"):
@@ -192,5 +192,5 @@ async def test_stt_uses_batch_model_from_config(api_key, monkeypatch):
     text = await svc.transcribe(b"audio", "clip.webm", "audio/webm")
     assert text == "what is my balance?"
     stt_call = next(c for c in post.calls if c["path"].endswith("/audio/transcriptions"))
-    assert stt_call["json"]["model"] == "voxtral-test-stt"
+    assert stt_call["data"]["model"] == "voxtral-test-stt"
     assert stt_call["files"] is not None
