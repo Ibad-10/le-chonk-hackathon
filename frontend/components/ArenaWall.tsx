@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 
 import {
   getAgentLeaderboard,
@@ -22,17 +23,28 @@ import { STREAMS } from "@/lib/types";
 
 import type { AgentLeaderboardEntry, ArenaEvent, NowPlayingCard } from "@/lib/types";
 
+// three.js needs the DOM — no SSR.
+const SpectatorBase = dynamic(() => import("@/components/base/SpectatorBase"), {
+  ssr: false,
+});
+
 /**
  * Arena wall — full-screen projector view. Rotates every WALL_ROTATION_MS
  * between the live event ticker, the agent leaderboard and "now playing"
- * cards (opted-in calls, captions only). Polls the public endpoints every
- * WALL_POLL_MS.
+ * cards (opted-in calls, captions only — each card also shows the same live
+ * base the player sees). Polls the public endpoints every WALL_POLL_MS.
  */
 export default function ArenaWall() {
   const [view, setView] = useState<WallView>(WALL_VIEWS[0]);
   const [events, setEvents] = useState<ArenaEvent[]>([]);
   const [agents, setAgents] = useState<AgentLeaderboardEntry[]>([]);
   const [playing, setPlaying] = useState<NowPlayingCard[]>([]);
+
+  // now-playing cards carry the agent name; the leaderboard gives name -> id
+  const agentIds = useMemo(
+    () => Object.fromEntries(agents.map((a) => [a.name, a.id])),
+    [agents]
+  );
 
   // poll public endpoints every 5 s
   useEffect(() => {
@@ -167,6 +179,16 @@ export default function ArenaWall() {
                     </li>
                   ))}
                 </ul>
+                {agentIds[c.agent_name] && (
+                  <div className="mt-4">
+                    <SpectatorBase
+                      agentId={agentIds[c.agent_name]}
+                      stream={c.stream}
+                      captions={c.captions}
+                      height="34vh"
+                    />
+                  </div>
+                )}
                 <p className="mt-auto pt-4 text-xs uppercase tracking-wide text-room-muted">
                   captions only — player opted in
                 </p>

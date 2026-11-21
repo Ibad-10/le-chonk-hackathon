@@ -1,17 +1,50 @@
 "use client";
 
-import { Suspense, use, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 
 import Siege from "@/components/Siege";
+import CallPanel from "@/components/voice/CallPanel";
+import { usePrefersReducedMotion } from "@/components/base/usePrefersReducedMotion";
 import MessageCounter, { useMessageLimit } from "@/components/MessageCounter";
 import TimerRing from "@/components/TimerRing";
 import { endRun, getAgent, getRoleBrief, startRun, streamMessage } from "@/lib/api";
+
+import {
+  causeFamilyOf,
+  endBanner,
+  isPoliteDecline,
+  toolEventToBaseEvent,
+  type BaseEvent,
+} from "@/lib/base";
 import { MAX_PLAYER_MESSAGES, TEXT_RUN_SECONDS, secondsUntil } from "@/lib/format";
 import { isReadTool, isRiskyTool, type SiegeEvent } from "@/lib/siege";
 import type { Agent, RoleBrief, RunResult } from "@/lib/types";
+
+// three.js needs the DOM — no SSR.
+const LiveBase = dynamic(() => import("@/components/base/LiveBase"), {
+  ssr: false,
+  loading: () => <p className="p-8 text-room-muted">Raising the base…</p>,
+});
+
+type PlayView = "base" | "siege" | "chat";
+
+/** WebGL available? (the 3D base needs it; Siege is the lightweight fallback) */
+function webglAvailable(): boolean {
+  if (typeof window === "undefined" || typeof document === "undefined") return false;
+  try {
+    const canvas = document.createElement("canvas");
+    return !!(
+      window.WebGLRenderingContext &&
+      (canvas.getContext("webgl2") || canvas.getContext("webgl"))
+    );
+  } catch {
+    return false;
+  }
+}
 
 interface ChatMessage {
   role: "player" | "agent";
@@ -50,6 +83,11 @@ function PlayPageInner({ agentId }: { agentId: string }) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<RunResult | null>(null);
+  // Base (3D) is the default view; Siege is the lightweight view and the
+  // automatic fallback when WebGL is unavailable or reduced motion is set.
+  const [view, setView] = useState<PlayView>("base");
+  const reducedMotion = usePrefersReducedMotion();
+  const [baseEvents, setBaseEvents] = useState<BaseEvent[]>([]);
   const [siegeEvents, setSiegeEvents] = useState<SiegeEvent[]>([]);
   const [secondsLeft, setSecondsLeft] = useState(TEXT_RUN_SECONDS);
   const cooldownSentRef = useRef(false);
@@ -58,10 +96,23 @@ function PlayPageInner({ agentId }: { agentId: string }) {
   const runIdRef = useRef<string | null>(null);
   runIdRef.current = runId;
 
+  // end-of-run banner for the base (stars / conquest / defended / treaty / helped)
+  const baseBanner = useMemo(
+    () => (result ? endBanner(baseEvents, { role: brief?.role, outcome: result.outcome }) : null),
+    [result, baseEvents, brief]
+  );
+
   // playing requires sign-in
   useEffect(() => {
     if (isLoaded && !isSignedIn) router.replace("/sign-in");
   }, [isLoaded, isSignedIn, router]);
+
+  // automatic fallback: no WebGL or prefers-reduced-motion -> lightweight Siege
+  useEffect(() => {
+    if (reducedMotion || !webglAvailable()) {
+      setView((v) => (v === "base" ? "siege" : v));
+    }
+  }, [reducedMotion]);
 
   // HUD clock (the TimerRing keeps its own ring; this feeds the siege HUD)
   useEffect(() => {
@@ -110,11 +161,17 @@ function PlayPageInner({ agentId }: { agentId: string }) {
     if (!id || result) return;
     const token = isSignedIn ? await getToken() : null;
     try {
-      setResult(await endRun(id, token));
+      const res = await endRun(id, token);
+      setResult(res);
+      // runEnded drives the base (stars / conquest / "Base defended" screen)
+      setBaseEvents((e) => [
+        ...e,
+        { type: "runEnded", outcome: res.outcome, role: brief?.role, helpfulness: res.helpfulness },
+      ]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "could not end run");
     }
-  }, [getToken, isSignedIn, result]);
+  }, [getToken, isSignedIn, result, brief]);
 
   const send = useCallback(async () => {
     const text = draft.trim();
@@ -124,6 +181,11 @@ function PlayPageInner({ agentId }: { agentId: string }) {
     setDraft("");
     setSending(true);
     setMessages((m) => [...m, { role: "player", content: text }]);
+    // live base: a troop squad spawns immediately and marches at its target
+    setBaseEvents((e) => [
+      ...e,
+      { type: "playerMessage", text, tactic: causeFamilyOf(text) },
+    ]);
     // tactic comes from the run's tactic/persona field when the backend
     // provides it; until then the siege falls back to a keyword heuristic
     setSiegeEvents((e) => [...e, { type: "playerMessage", text, tactic: null }]);
@@ -135,6 +197,19 @@ function PlayPageInner({ agentId }: { agentId: string }) {
       {
         onChunk: (piece) => setStreaming((s) => s + piece),
         onDone: (event) => {
+          // live base beats: envoy / sent back / defeated, read tools, risky tools
+          setBaseEvents((e) => [
+            ...e,
+            {
+              type: "agentReply",
+              text: event.reply ?? "",
+              refused: event.tool_events.length === 0,
+              polite: isPoliteDecline(event.reply),
+            },
+            ...event.tool_events
+              .map(toolEventToBaseEvent)
+              .filter((b): b is BaseEvent => b !== null),
+          ]);
           const okTools = event.tool_events.filter((t) => t.ok);
           const toolEvents: SiegeEvent[] = okTools.map((t): SiegeEvent | null =>
             isRiskyTool(t.call.name, t.call.args)
@@ -177,6 +252,21 @@ function PlayPageInner({ agentId }: { agentId: string }) {
     );
   }
 
+  const viewButton = (v: PlayView, label: string) => (
+    <button
+      type="button"
+      onClick={() => setView(v)}
+      aria-pressed={view === v}
+      className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium ${
+        view === v
+          ? "border-room-red bg-room-red/15 text-room-red-soft"
+          : "border-room-line bg-room-panel-2 text-room-muted hover:text-room-text"
+      }`}
+    >
+      {label} {view === v ? "on" : "off"}
+    </button>
+  );
+
   return (
     <div className="mx-auto grid w-full max-w-6xl gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[280px_1fr]">
       <aside className="space-y-4">
@@ -206,16 +296,19 @@ function PlayPageInner({ agentId }: { agentId: string }) {
             >
               End run
             </button>
-            <button
-              type="button"
-              disabled
-              title="Voice is being added by a separate builder"
-              className="cursor-not-allowed rounded-md border border-room-line bg-room-panel-2 px-4 py-2 text-sm font-medium text-room-muted"
-            >
-              📞 Voice coming
-            </button>
+            <div className="flex gap-2" role="group" aria-label="View">
+              {viewButton("base", "🏰 Base")}
+              {viewButton("siege", "⚔️ Siege")}
+              {viewButton("chat", "💬 Chat")}
+            </div>
           </div>
         </div>
+
+        <CallPanel
+          agentId={agentId}
+          agentName={agent?.name ?? "the agent"}
+          getToken={isSignedIn ? getToken : undefined}
+        />
 
         {brief && (
           <div className="rounded-xl border border-room-line bg-room-panel p-5">
@@ -251,18 +344,34 @@ function PlayPageInner({ agentId }: { agentId: string }) {
         )}
       </aside>
 
-      <div className="lg:col-span-2">
-        <Siege
-          events={siegeEvents}
-          messagesRemaining={limit.remaining}
-          maxMessages={limit.max}
-          secondsLeft={secondsLeft}
-        />
-      </div>
+      {view === "siege" && (
+        <div className="lg:col-span-2">
+          <Siege
+            events={siegeEvents}
+            messagesRemaining={limit.remaining}
+            maxMessages={limit.max}
+            secondsLeft={secondsLeft}
+          />
+        </div>
+      )}
+
+      <div className={view === "base" ? "relative lg:grid lg:grid-cols-[1fr_360px] lg:items-start lg:gap-4" : ""}>
+        {view === "base" && (
+          <LiveBase
+            agentId={agentId}
+            stream={agent?.stream ?? "banking"}
+            events={baseEvents}
+            height="58vh"
+          />
+        )}
 
       <section
         aria-label="Chat"
-        className="flex min-h-[60vh] flex-col rounded-xl border border-room-line bg-room-panel"
+        className={`flex flex-col rounded-xl border border-room-line bg-room-panel ${
+          view === "base"
+            ? "min-h-[38vh] max-lg:absolute max-lg:inset-x-2 max-lg:bottom-2 max-lg:max-h-[52%] max-lg:bg-room-panel/95 max-lg:shadow-xl"
+            : "min-h-[60vh]"
+        }`}
       >
         <div className="flex-1 space-y-3 overflow-y-auto p-5">
           {messages.length === 0 && !streaming && (
@@ -321,6 +430,7 @@ function PlayPageInner({ agentId }: { agentId: string }) {
           </button>
         </form>
       </section>
+      </div>
 
       {result && (
         <section
@@ -337,6 +447,20 @@ function PlayPageInner({ agentId }: { agentId: string }) {
                   : "The agent held"}
           </h2>
           <p className="mt-2 text-room-muted">{outcomeLabel(result)}</p>
+          {baseBanner && (
+            <div className="mt-3 flex items-center gap-3">
+              {baseBanner.stars !== null && (
+                <span
+                  className="font-display text-3xl tracking-widest text-room-red-soft"
+                  aria-label={`${baseBanner.stars} stars`}
+                >
+                  {"★".repeat(baseBanner.stars)}
+                  <span className="text-room-line">{"★".repeat(3 - baseBanner.stars)}</span>
+                </span>
+              )}
+              <span className="text-sm font-semibold text-room-text">{baseBanner.label}</span>
+            </div>
+          )}
           <p className="mt-3 font-mono text-sm text-room-text">
             +{result.points} points · Elo{" "}
             {result.elo_delta >= 0 ? "+" : ""}
