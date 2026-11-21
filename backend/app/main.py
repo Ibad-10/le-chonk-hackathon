@@ -20,6 +20,8 @@ from app.repo import SQLiteLogbookRepo, SQLiteRunsRepo
 from app.routes.agents import router as agents_router
 from app.routes.owner import router as owner_router
 from app.routes.runs import router as runs_router
+from app.routes.voice import router as voice_router
+from app.routes.voice_live import router as voice_live_router
 from app.routes.wall import router as wall_router
 from app.runs import RunService
 
@@ -53,6 +55,8 @@ app.include_router(runs_router)
 app.include_router(agents_router)
 app.include_router(owner_router)
 app.include_router(wall_router)
+app.include_router(voice_router)
+app.include_router(voice_live_router)
 
 
 @app.get("/health")

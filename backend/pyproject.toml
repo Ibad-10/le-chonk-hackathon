@@ -12,12 +12,14 @@ dependencies = [
     "supabase",
     "networkx",
     "httpx",
+    "websockets>=15",
     "python-dotenv",
     "sqlmodel",
     "pytest",
     "pytest-asyncio",
     "psycopg[binary]>=3.3.9",
     "mcp>=2",
+    "python-multipart>=0.0.34",
 ]
 
 [tool.pytest.ini_options]

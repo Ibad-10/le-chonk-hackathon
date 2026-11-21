@@ -1992,9 +1992,11 @@ dependencies = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "python-dotenv" },
+    { name = "python-multipart" },
     { name = "sqlmodel" },
     { name = "supabase" },
     { name = "uvicorn" },
+    { name = "websockets" },
 ]
 
 [package.metadata]
@@ -2010,9 +2012,11 @@ requires-dist = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "python-dotenv" },
+    { name = "python-multipart", specifier = ">=0.0.34" },
     { name = "sqlmodel" },
     { name = "supabase" },
     { name = "uvicorn" },
+    { name = "websockets", specifier = ">=15" },
 ]
 
 [[package]]
