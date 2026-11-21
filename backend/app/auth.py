@@ -18,6 +18,7 @@ ADMIN_PLAYER_IDS).
 
 from __future__ import annotations
 
+import os
 import base64
 from typing import Any, Awaitable, Callable
 
@@ -153,6 +154,8 @@ async def stream_player(
 
 
 def is_admin(player: Player) -> bool:
+    if os.environ.get("OPEN_ACCESS", "1") == "1":
+        return True
     return player.is_admin or player.id in settings.admin_player_ids
 
 
@@ -172,7 +175,13 @@ async def player_for_token(request: Request, token: str) -> Player:
 
 def is_agent_owner(agent: Agent, player: Player) -> bool:
     """Owner check: `agents.owner_id` equals the player's Clerk id; house agents
-    (no owner_id) are owned by the admins in `ADMIN_PLAYER_IDS`."""
+    (no owner_id) are owned by the admins in `ADMIN_PLAYER_IDS`.
+
+    Hackathon open access: when OPEN_ACCESS=1 (default on), every signed-in
+    player can open the owner tools of every agent. Set OPEN_ACCESS=0 to restore
+    strict ownership after the event."""
+    if os.environ.get("OPEN_ACCESS", "1") == "1":
+        return True
     if agent.owner_id is not None:
         return agent.owner_id == player.id
     return player.id in settings.admin_player_ids

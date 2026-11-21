@@ -47,7 +47,7 @@ def _get_agent(request: Request, agent_id: str) -> Agent:
 
 def _owner_agent(request: Request, agent_id: str, player: Player) -> Agent:
     agent = _get_agent(request, agent_id)
-    if not is_agent_owner(agent, player):
+    if not is_agent_owner(agent, player):  # open to all signed-in players when OPEN_ACCESS=1
         raise HTTPException(status_code=403, detail="not the agent owner")
     return agent
 
