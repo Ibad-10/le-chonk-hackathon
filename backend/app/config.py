@@ -37,6 +37,9 @@ class Settings:
     next_public_supabase_url: str = _get("NEXT_PUBLIC_SUPABASE_URL")
     next_public_supabase_anon_key: str = _get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
 
+    # Guardian gate (live calls use the main model at low effort)
+    guardian_timeout_s: float = float(_get("GUARDIAN_TIMEOUT_S", "15"))
+
     # App wiring
     backend_url: str = _get("BACKEND_URL", "http://localhost:8000")
     next_public_backend_url: str = _get("NEXT_PUBLIC_BACKEND_URL", "http://localhost:8000")

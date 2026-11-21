@@ -84,13 +84,19 @@ class MistralLLM:
             request["reasoning_effort"] = reasoning_effort
         if reasoning_effort == "high":
             request["max_tokens"] = 4096  # >= 2000 required at high effort
+        elif reasoning_effort == "low":
+            # cap output tokens: without this the model spends the budget thinking
+            request["max_tokens"] = 800
 
         try:
             response = await self._client.chat.complete_async(**request)
         except MistralError as exc:
             if getattr(exc, "status_code", None) == 429 and model != self._fallback_model:
-                # rate limited on the main model: retry once on the fallback
+                # rate limited on the main model: retry once on the fallback.
+                # the fallback model rejects reasoning_effort with HTTP 400,
+                # so it must be removed from the retry request.
                 request["model"] = self._fallback_model
+                request.pop("reasoning_effort", None)
                 response = await self._client.chat.complete_async(**request)
             else:
                 raise

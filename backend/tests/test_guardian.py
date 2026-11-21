@@ -66,18 +66,31 @@ def test_seed_rules_v1_are_the_three_exact_texts():
 
 
 async def test_guardian_prompt_contains_rules_and_call():
+    from app.config import settings
+
     llm = FakeLLM()
     decision = await guardian_decide(llm, _input(), mode="live")
     assert decision.decision == "allow"
     assert len(llm.calls) == 1
     call = llm.calls[0]
-    # main model from config, low reasoning effort, 8 s timeout
+    # main model from config, low reasoning effort, timeout from config
     assert call["reasoning_effort"] == "low"
-    assert call["timeout_s"] == GUARDIAN_TIMEOUT_S == 8.0
-    # the system prompt quotes every rule id and the proposed call
+    assert call["timeout_s"] == GUARDIAN_TIMEOUT_S == settings.guardian_timeout_s == 15.0
+    # the system prompt quotes every rule id; the proposed call is in the user turn
     for rule in seed_rules_v1("bank-ava"):
         assert rule.id in call["system"]
-    assert "send_payment" in call["system"]
+    assert "send_payment" in call["messages"][0]["content"]
+
+
+async def test_guardian_sends_only_last_12_transcript_turns():
+    llm = FakeLLM()
+    inp = _input().model_copy(
+        update={"transcript": [Turn(role="player", content=f"msg {i}") for i in range(20)]}
+    )
+    await guardian_decide(llm, inp, mode="live")
+    user = llm.calls[0]["messages"][0]["content"]
+    assert "msg 8" in user and "msg 19" in user
+    assert "msg 7" not in user
 
 
 async def test_mode_none_allows_everything_without_llm():
