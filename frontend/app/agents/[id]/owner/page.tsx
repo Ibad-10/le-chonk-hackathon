@@ -7,7 +7,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "@clerk/nextjs";
-import { Play, TriangleAlert, X } from "lucide-react";
+import { Castle, Network, Play, Swords, TriangleAlert, X } from "lucide-react";
+
+import { DefendSteps, WhileAwayDialog } from "@/components/defend";
 
 import RetestPanel from "@/components/RetestPanel";
 import SiegeReplay from "@/components/SiegeReplay";
@@ -73,9 +75,9 @@ function LogbookSection({
 }) {
   const [replayEntryId, setReplayEntryId] = useState<string | null>(null);
   return (
-    <section aria-label="Logbook" className="space-y-4">
+    <section id="reports" aria-label="Raid reports" className="scroll-mt-20 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-display text-xl text-room-text">Logbook</h2>
+        <h2 className="font-display text-3xl text-room-text">Raid reports</h2>
         <button
           type="button"
           onClick={onAnalyse}
@@ -183,8 +185,8 @@ function DraftEditor({
 }) {
   const remaining = MAX_INSTRUCTIONS_CHARS - draft.instructions.length;
   return (
-    <section aria-label="Draft editor" className="rounded-xl border border-room-line bg-room-panel p-5">
-      <h2 className="font-display text-xl text-room-text">Draft</h2>
+    <section id="repair" aria-label="Draft editor" className="scroll-mt-20 rounded-xl border border-room-line bg-room-panel p-5">
+      <h2 className="font-display text-3xl text-room-text">Repair</h2>
       <label
         htmlFor="draft-instructions"
         className="mt-3 block text-sm font-medium text-room-text"
@@ -227,7 +229,7 @@ function VersionDiffSection({ diff }: { diff: VersionDiff }) {
       aria-label="Version diff"
       className="rounded-xl border border-room-line bg-room-panel p-5"
     >
-      <h2 className="font-display text-xl text-room-text">Version diff</h2>
+      <h2 className="font-display text-3xl text-room-text">Upgrades</h2>
       <div className="mt-3 grid gap-4 md:grid-cols-2">
         <div>
           <h3 className="text-sm font-semibold text-room-muted">
@@ -403,32 +405,38 @@ function OwnerPageInner({ params }: { params: Promise<{ id: string }> }) {
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6 px-4 py-10 sm:px-6">
-      <header className="flex flex-wrap items-baseline justify-between gap-3">
+      <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-3xl text-room-text">
-            {agent.name} <span className="text-room-muted">— owner</span>
-          </h1>
-          <p className="mt-1 text-sm text-room-muted">
-            v{agent.current_version} · rating {Math.round(agent.rating)} ±
-            {Math.round(agent.rating_deviation)}
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-room-red-soft">Defend</p>
+          <h1 className="mt-1 font-display text-5xl leading-none text-room-text">{agent.name}</h1>
+          <p className="mt-2 font-mono text-sm text-room-muted">
+            v{agent.current_version} · {Math.round(agent.rating)} ±{Math.round(agent.rating_deviation)} Elo
             {agent.grade ? ` · grade ${agent.grade}` : ""}
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={`/agents/${id}/base`}
+            className="inline-flex items-center gap-2 rounded-lg bg-room-red px-4 py-2.5 text-sm font-bold text-room-bg hover:bg-room-red-soft"
+          >
+            <Castle size={16} aria-hidden="true" /> Your base
+          </Link>
           <Link
             href={`/agents/${id}/graph`}
-            className="rounded-md border border-room-line bg-room-panel-2 px-4 py-2 text-sm font-semibold text-room-text hover:border-room-red/70"
+            className="inline-flex items-center gap-2 rounded-lg border border-room-line bg-room-panel-2 px-4 py-2.5 text-sm font-semibold text-room-text hover:border-room-red/70"
           >
-            Knowledge graph
+            <Network size={16} aria-hidden="true" /> Knowledge graph
           </Link>
           <Link
             href={`/play/${id}?practice=1`}
-            className="rounded-md border border-room-line bg-room-panel-2 px-4 py-2 text-sm font-semibold text-room-text hover:border-room-red/70"
+            className="inline-flex items-center gap-2 rounded-lg border border-room-line bg-room-panel-2 px-4 py-2.5 text-sm font-semibold text-room-text hover:border-room-red/70"
           >
-            Practice chat (no Elo)
+            <Swords size={16} aria-hidden="true" /> Practice raid
           </Link>
         </div>
       </header>
+
+      <DefendSteps />
 
       {notice && (
         <p role="status" className="rounded-lg bg-room-red/10 p-3 text-sm text-room-red-soft">
@@ -436,12 +444,15 @@ function OwnerPageInner({ params }: { params: Promise<{ id: string }> }) {
         </p>
       )}
 
+      {logbook && <WhileAwayDialog agentId={id} agentName={agent.name} logbook={logbook} />}
+
       {logbook && (
         <LogbookSection logbook={logbook} onAnalyse={() => void onAnalyse()} analysing={analysing} />
       )}
 
       <DraftEditor draft={draft} setDraft={setDraft} />
 
+      <div id="test" className="scroll-mt-20">
       <RetestPanel
         report={report}
         running={running}
@@ -449,8 +460,11 @@ function OwnerPageInner({ params }: { params: Promise<{ id: string }> }) {
         onPublish={(force) => void onPublish(force)}
         publishing={publishing}
       />
+      </div>
 
-      {diff && <VersionDiffSection diff={diff} />}
+      <div id="upgrade" className="scroll-mt-20">
+        {diff && <VersionDiffSection diff={diff} />}
+      </div>
       {versions.length === 0 && !diff && null}
     </div>
   );
