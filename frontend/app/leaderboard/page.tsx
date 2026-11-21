@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 
+import RankBadge from "@/components/RankBadge";
 import { getAgentLeaderboard, getPlayersLeaderboard } from "@/lib/api";
+import { getRanks, type Rank } from "@/lib/challengeApi";
 
 import { STREAMS, type AgentLeaderboardEntry, type PlayerLeaderboardEntry, type Stream } from "@/lib/types";
 
@@ -13,9 +15,12 @@ export default function LeaderboardPage() {
   const [stream, setStream] = useState<Stream>("banking");
   const [players, setPlayers] = useState<PlayerLeaderboardEntry[] | null>(null);
   const [agents, setAgents] = useState<AgentLeaderboardEntry[] | null>(null);
+  const [ranks, setRanks] = useState<Rank[]>([]);
 
   useEffect(() => {
     getPlayersLeaderboard().then(setPlayers).catch(() => setPlayers([]));
+    // Rank badges are optional: on failure the list simply shows no badges.
+    getRanks().then(setRanks).catch(() => setRanks([]));
   }, []);
 
   useEffect(() => {
@@ -89,7 +94,14 @@ export default function LeaderboardPage() {
             {players.map((p, i) => (
               <tr key={p.player_id} className="border-b border-room-line/50 last:border-0 hover:bg-room-panel-2">
                 <td className="px-4 py-3 font-mono text-room-muted">{i + 1}</td>
-                <td className="px-4 py-3 text-room-text">{p.name}</td>
+                <td className="px-4 py-3 text-room-text">
+                  <div className="flex items-center gap-3">
+                    <span>{p.name}</span>
+                    {typeof p.xp === "number" && ranks.length > 0 && (
+                      <RankBadge xp={p.xp} ranks={ranks} />
+                    )}
+                  </div>
+                </td>
                 <td className="px-4 py-3 font-mono text-room-text">{p.rating}</td>
                 <td className="px-4 py-3 font-mono text-room-text">{p.wins}</td>
                 <td className="px-4 py-3 font-mono text-room-text">{p.points}</td>
