@@ -7,7 +7,7 @@ Still in development (not public). Goal: every feature, page and API at producti
 - [x] Per-player usage limits on Mistral-backed routes (messages, voice turns, analyse, retest, placement) so no one can run up the API bill.
 - [x] Opaque ids on the public `/events` feed (no run ids).
 - [x] Race fixes: publish vs draft, the 3-agent limit, retest summary filtered by agent.
-- [ ] Access-denied and error states on every page (owner, base, admin, challenge), ready for `OPEN_ACCESS=0`.
+- [x] Access-denied and error states on every page (owner, base, admin, challenge), ready for `OPEN_ACCESS=0`.
 - [x] Structured logging and a `/health` that also checks the database and Mistral key.
 
 ## Game and product

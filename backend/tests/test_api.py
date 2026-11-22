@@ -275,3 +275,14 @@ async def test_practice_run_never_changes_elo_points_or_logbook(tmp_path):
     assert run.elo_delta == 0.0  # and never changes Elo
     assert svc.logbook.open_entries("bank-ava") == []  # nor the logbook
     assert svc.arena_available("bank-ava", 1000.0)  # no cooldown either
+
+
+def test_me_reports_admin(tmp_path, monkeypatch):
+    from app.routes.agents import router as agents_router
+
+    monkeypatch.setattr(settings, "admin_player_ids", ["user_123"])
+    app = _app(tmp_path)
+    app.include_router(agents_router)
+    client = TestClient(app)
+    assert client.get("/me", headers=_auth("user_123")).json() == {"id": "user_123", "is_admin": True}
+    assert client.get("/me", headers=_auth("user_999")).json()["is_admin"] is False

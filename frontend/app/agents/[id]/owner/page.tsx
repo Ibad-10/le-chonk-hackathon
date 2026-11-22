@@ -320,6 +320,7 @@ function OwnerPageInner({ params }: { params: Promise<{ id: string }> }) {
   const [draft, setDraft] = useState<Draft>({ instructions: "", knowledge: "" });
   const [draftId, setDraftId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [forbidden, setForbidden] = useState(false);
   const [tab, setTab] = useState("reports");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -337,13 +338,17 @@ function OwnerPageInner({ params }: { params: Promise<{ id: string }> }) {
       if (cancelled) return;
       getAgent(id).then(setAgent).catch(() => setError("Could not load this agent."));
       getLogbook(id, token).then(setLogbook).catch(() => {});
-      getVersions(id, token).then((vs) => {
-        if (cancelled) return;
-        setVersions(vs);
-        const latest = vs[vs.length - 1];
-        if (latest)
-          setDraft({ instructions: latest.instructions, knowledge: latest.knowledge });
-      });
+      getVersions(id, token)
+        .then((vs) => {
+          if (cancelled) return;
+          setVersions(vs);
+          const latest = vs[vs.length - 1];
+          if (latest)
+            setDraft({ instructions: latest.instructions, knowledge: latest.knowledge });
+        })
+        .catch((e) => {
+          if (!cancelled && /403/.test(e instanceof Error ? e.message : "")) setForbidden(true);
+        });
     })();
     return () => {
       cancelled = true;
@@ -461,6 +466,27 @@ function OwnerPageInner({ params }: { params: Promise<{ id: string }> }) {
 
   if (isLoaded && !isSignedIn) {
     return <p className="p-8 text-muted-foreground">Redirecting to sign in…</p>;
+  }
+  if (forbidden) {
+    return (
+      <div className="mx-auto w-full max-w-[720px] px-4 py-16 sm:px-6">
+        <Alert>
+          <TriangleAlert aria-hidden="true" />
+          <AlertTitle>Only the owner can defend this agent</AlertTitle>
+          <AlertDescription>
+            You can still try to break it.
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button asChild>
+                <Link href={`/play/${id}`}>Attack it</Link>
+              </Button>
+              <Button asChild variant="secondary">
+                <Link href={`/agents/${id}`}>View agent</Link>
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
   }
   if (!agent) {
     return error ? (

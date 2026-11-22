@@ -1,16 +1,26 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 
 import AgentLab from "@/components/admin/AgentLab";
 import ResearchPanel from "@/components/admin/ResearchPanel";
 import { HOUSE_AGENTS } from "@/lib/adminApi";
+import { getMe } from "@/lib/api";
 
 export default function AdminPage() {
   const router = useRouter();
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
+  const [admin, setAdmin] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    getToken()
+      .then((t) => getMe(t))
+      .then((m) => setAdmin(m.is_admin))
+      .catch(() => setAdmin(false));
+  }, [isLoaded, isSignedIn, getToken]);
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) router.replace("/sign-in");
@@ -18,6 +28,21 @@ export default function AdminPage() {
 
   if (!isLoaded || !isSignedIn) {
     return <p className="p-8 text-muted-foreground">Redirecting to sign in…</p>;
+  }
+
+  if (admin === null) {
+    return <p className="p-8 text-muted-foreground">Checking access…</p>;
+  }
+  if (!admin) {
+    return (
+      <div className="mx-auto w-full max-w-[720px] px-4 py-16 sm:px-6">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-room-red-soft">Admin</p>
+        <h1 className="mt-1 font-display text-3xl text-foreground">Admins only</h1>
+        <p className="mt-3 text-muted-foreground">
+          The House agents lab trains Ava, Max, Pip and Rex. Ask an admin for access.
+        </p>
+      </div>
+    );
   }
 
   return (

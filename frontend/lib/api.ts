@@ -617,3 +617,12 @@ export async function exportAgent(agentId: string, token?: Token): Promise<Blob>
   if (!res.ok) throw new Error(`API ${res.status}`);
   return res.blob();
 }
+
+/** GET /me: the signed-in player's id and whether they are an admin. */
+export async function getMe(token?: Token): Promise<{ id: string; is_admin: boolean }> {
+  const res = await fetch(`${BASE_URL}/me`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error(`API ${res.status}`);
+  return res.json();
+}

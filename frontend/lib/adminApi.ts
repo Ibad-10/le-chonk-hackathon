@@ -4,7 +4,7 @@
 const BASE_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL?.replace(/\/$/, "") ?? "http://localhost:8000";
 
-export const HOUSE_AGENTS = ["bank-ava", "shop-max", "assistant-pip"] as const;
+export const HOUSE_AGENTS = ["bank-ava", "shop-max", "assistant-pip", "bank-rex"] as const;
 
 export interface TrainingCycle {
   created_at: string;

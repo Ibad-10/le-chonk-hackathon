@@ -25,24 +25,27 @@ describe("admin page", () => {
 
   it("renders cycles and tactics from the backend, with the auth header", async () => {
     const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
-      const body = url.includes("/research/latest")
+      const body = url.endsWith("/me")
+        ? { id: "u", is_admin: true }
+        : url.includes("/research/latest")
         ? { source: "s", created_at: null, tactics: [{ tactic_name: "Fake invoice", family: "BEC", source_url: "https://e.x" }] }
         : { agent_id: "a", cycles: [cycle] };
       return new Response(JSON.stringify(body), { status: 200 });
     });
     vi.stubGlobal("fetch", fetchMock);
     render(<AdminPage />);
-    expect(screen.getByText("House agents lab")).toBeInTheDocument();
+    expect(await screen.findByText("House agents lab")).toBeInTheDocument();
     expect(await screen.findByText("Fake invoice")).toBeInTheDocument();
-    await waitFor(() => expect(screen.getAllByText(/6 attacks run, 2 failures found/)).toHaveLength(3));
-    expect(screen.getAllByRole("button", { name: /run training cycle/i })).toHaveLength(3);
+    await waitFor(() => expect(screen.getAllByText(/6 attacks run, 2 failures found/)).toHaveLength(4));
+    expect(screen.getAllByRole("button", { name: /run training cycle/i })).toHaveLength(4);
     const cyclesCall = fetchMock.mock.calls.find((c) => String(c[0]).includes("/cycles"))!;
     expect((cyclesCall[1] as RequestInit).headers).toMatchObject({ Authorization: "Bearer tok" });
   });
 
-  it("shows an inline error on failure", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ detail: "admin only" }), { status: 403 })));
+  it("shows an admins-only gate to non-admins", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ id: "u", is_admin: false }), { status: 200 })));
     render(<AdminPage />);
-    expect((await screen.findAllByText(/403 admin only/)).length).toBeGreaterThan(0);
+    expect(await screen.findByText("Admins only")).toBeInTheDocument();
+    expect(screen.queryByText("House agents lab")).not.toBeInTheDocument();
   });
 });

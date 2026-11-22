@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case
 from sqlmodel import Session, func, select
 
-from app.auth import current_player, require_agent_owner
+from app.auth import current_player, is_admin, require_agent_owner
 from app.creator import AgentLimitReached, create_agent
 from app.db import Agent, Player, RunRow
 from app.runs import START_ELO
@@ -173,3 +173,9 @@ async def leaderboard_agents(request: Request, stream: str | None = Query(defaul
             query = query.where(Agent.stream == stream)
         agents = session.exec(query.order_by(Agent.rating.desc())).all()
         return [public_agent(a, _engine(request), _run_service(request)) for a in agents]
+
+
+@router.get("/me")
+async def me(player: Player = Depends(current_player)):
+    """Who am I: the frontend uses this to gate admin-only pages."""
+    return {"id": player.id, "is_admin": is_admin(player)}
