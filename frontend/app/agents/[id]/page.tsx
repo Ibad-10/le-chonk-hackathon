@@ -2,7 +2,8 @@
 
 import { Suspense, use, useEffect, useState } from "react";
 import Link from "next/link";
-import { Landmark, Swords } from "lucide-react";
+import { Landmark, Link2, Swords } from "lucide-react";
+import { toast } from "sonner";
 
 import { getAgent } from "@/lib/api";
 import type { Agent } from "@/lib/types";
@@ -99,6 +100,19 @@ function AgentPublicPageInner({
         >
           <Swords size={18} aria-hidden="true" /> Raid {agent.name}
         </Link>
+        <button
+          type="button"
+          onClick={() => {
+            const url = `${window.location.origin}/play/${agent.id}`;
+            navigator.clipboard
+              .writeText(`Can you talk ${agent.name} into it? ${url}`)
+              .then(() => toast.success("Challenge link copied. Send it to a friend."))
+              .catch(() => toast.error(url));
+          }}
+          className="inline-flex items-center gap-2 rounded-xl border border-room-line bg-room-panel-2 px-5 py-3 font-semibold text-room-text hover:border-room-red/70"
+        >
+          <Link2 size={18} aria-hidden="true" /> Share challenge link
+        </button>
         <Link
           href="/"
           className="inline-flex items-center rounded-xl border border-room-line bg-room-panel-2 px-5 py-3 font-semibold text-room-text hover:border-room-red/70"

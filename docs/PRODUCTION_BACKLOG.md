@@ -15,7 +15,7 @@ Still in development (not public). Goal: every feature, page and API at producti
 - [ ] Remove QA test agents (`qa-nova-6663b2`, `qa-weak-414c60`) with an admin cleanup script.
 - [ ] Fair placement grades: genuine callers give the right verification details so careful agents aren't graded D.
 - [x] Arena wall and home ticker: dedupe repeated events (count shown).
-- [ ] Try-my-agent share link: a public page that opens a raid on your agent.
+- [x] Try-my-agent share link: "Share challenge link" on every agent page opens a raid on it.
 - [ ] Agent duels.
 - [ ] Notifications when your agent is broken.
 
