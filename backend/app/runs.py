@@ -3,7 +3,7 @@
 Text runs last RUN_TEXT_S (600 s) or RUN_TEXT_MESSAGES (20) player messages;
 voice runs RUN_VOICE_S (300 s); a run also ends after RUN_IDLE_S (60 s) without
 a player message (all configurable in .env). Arena runs consume one life at
-start; an `error` outcome or an abandon under 10 s refunds it. Runs record
+start; only an `error` outcome refunds it (no_contest does not). Runs record
 `stopped_by` for the logbook: "agent" when the run ends without a win, "none"
 on a win — there is no external judge in v4.
 
@@ -32,7 +32,7 @@ from typing import Any, AsyncIterator, Awaitable, Callable, Protocol
 
 from app.config import settings
 from app.db import LogbookEntry
-from app.engine.agent_turn import ToolEvent, agent_turn
+from app.engine.agent_turn import ToolEvent, agent_turn, normalize_language
 from app.engine.mock_state import MockState
 from app.creator import load_runtime_versioned
 from app.engine.wins import check_win
@@ -50,7 +50,6 @@ from app.roles import (
 )
 from app.scoring import elo_update, how_close, points
 
-ABANDONED_REFUND_S = 10.0
 VOICE_AGENT_MAX_TOKENS = 300  # latency: small output cap on live voice turns
 MIN_MESSAGES_FOR_CONTEST = 3  # fewer player messages (or a hang-up) = no contest
 START_ELO = 1200.0
@@ -71,6 +70,17 @@ class AgentInCooldown(Exception):
 
 class RunNotFound(KeyError):
     pass
+
+
+class RunForbidden(Exception):
+    """The caller may not start this run (route maps it to 403)."""
+
+
+class AgentNotFound(Exception):
+    """No such agent (route maps it to 404; never leaks file paths)."""
+
+
+PLAYER_MODES = ("arena", "practice")  # genuine is dealt by the server; the rest are admin-only
 
 
 # --- repository interface ---------------------------------------------------
@@ -258,9 +268,21 @@ class RunService:
         language: str = "auto",
         role: str | None = None,
         spectate: bool = False,
+        caller: Any = None,
     ) -> Run:
+        """`caller` (the verified Player) is set by every player-facing route
+        (POST /runs, POST /voice/sessions): it enforces the mode gate, owner-only
+        practice and the arena rules, and the run belongs to caller.id. Internal
+        jobs (AI scammer, tests) pass no caller."""
         now = self._now()
-        target, owner_instructions, knowledge, version = load_runtime_versioned(self._engine, agent_id)
+        language = normalize_language(language)
+        if caller is not None:
+            player_id = caller.id
+            self._authorize(caller, agent_id, mode)
+        try:
+            target, owner_instructions, knowledge, version = load_runtime_versioned(self._engine, agent_id)
+        except FileNotFoundError:
+            raise AgentNotFound(agent_id)
         if mode == "arena":
             if not self.arena_available(agent_id, now):
                 raise AgentInCooldown(f"agent {agent_id} is in cooldown")
@@ -307,6 +329,31 @@ class RunService:
             knowledge=knowledge,
         )
         return run
+
+    def _authorize(self, caller: Any, agent_id: str, mode: str) -> None:
+        from sqlmodel import Session
+
+        from app.auth import is_admin, is_agent_owner
+        from app.db import Agent
+
+        if mode not in PLAYER_MODES and not is_admin(caller):
+            raise RunForbidden(f"mode {mode} is admin-only")
+        if self._engine is None:
+            return  # no database (unit tests): house targets only, public, ownerless
+        with Session(self._engine) as db:
+            agent = db.get(Agent, agent_id)
+        if agent is None:
+            raise AgentNotFound(agent_id)
+        if mode == "practice" and not is_agent_owner(agent, caller):
+            # owner practice runs: allowed even in cooldown; never Elo/points
+            raise RunForbidden("practice runs are owner-only")
+        if mode == "arena":
+            # no point/Elo farming: private agents are not in the arena, and
+            # creators practise on their own agents instead
+            if agent.visibility != "public":
+                raise RunForbidden("this agent is private: it is not in the arena")
+            if agent.owner_id is not None and agent.owner_id == caller.id:
+                raise RunForbidden("this is your agent: use a practice run")
 
     def _duration(self, channel: RunChannel) -> float:
         return settings.run_voice_s if channel == "voice" else settings.run_text_s
@@ -454,7 +501,8 @@ class RunService:
             session.target, run.mission_id or "", executed, session.state, result.reply
         ):
             self._finish(session, "win")
-        elif run.channel == "text" and session.player_messages >= settings.run_text_messages:
+        elif session.player_messages >= settings.run_text_messages:
+            # the message cap applies to text and voice alike
             self._finish(session, "timeout")
 
         self.repo.update(run)  # persist transcript after every handled message
@@ -610,13 +658,10 @@ class RunService:
             # the agent ("block")
             self._apply_elo(run, "block")
 
-        # lives refunds (arena only)
-        if run.mode == "arena":
-            lives = self._lives[run.player_id]
-            duration = now - run.started_at.timestamp()
-            if outcome in ("error", "no_contest"):
-                lives.refund()
-            elif outcome == "abandoned" and duration < ABANDONED_REFUND_S:
-                lives.refund()
+        # lives refund (arena only): only our own failure (error) gives the
+        # life back. A no_contest (fewer than 3 messages, or a quick hang-up)
+        # costs the life, or players could probe agents for free forever.
+        if run.mode == "arena" and outcome == "error":
+            self._lives[run.player_id].refund()
 
         self.repo.update(run)

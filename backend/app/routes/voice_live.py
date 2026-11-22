@@ -37,6 +37,7 @@ from app.voice_live import LiveCall
 router = APIRouter()
 
 WS_AUTH_REJECTED = 4401  # close code for a missing/invalid Clerk session token
+WS_NOT_YOUR_RUN = 4403  # close code: the run belongs to another player
 
 
 class _WSAdapter:
@@ -90,6 +91,11 @@ async def voice_live(
         claims = await clerk.verify(raw)
         return str(claims["sub"])
 
+    def not_owner(player_id: str) -> bool:
+        """Only the player who started the run may drive its live call."""
+        run = ws.app.state.run_service.repo.get(run_id)
+        return run is not None and run.player_id != player_id
+
     player: str | None = None
     if token is not None:
         try:
@@ -97,6 +103,9 @@ async def voice_live(
         except HTTPException:
             # rejected before accept and before any LiveCall/Mistral call
             await ws.close(code=WS_AUTH_REJECTED)
+            return
+        if not_owner(player):
+            await ws.close(code=WS_NOT_YOUR_RUN)
             return
 
     await ws.accept()
@@ -114,6 +123,10 @@ async def voice_live(
         except HTTPException:
             await adapter.send_json({"type": "error", "detail": "invalid session token"})
             await adapter.close(code=WS_AUTH_REJECTED)
+            return
+        if not_owner(player):
+            await adapter.send_json({"type": "error", "detail": "not your run"})
+            await adapter.close(code=WS_NOT_YOUR_RUN)
             return
 
     factory = getattr(ws.app.state, "live_call_factory", None) or default_live_call_factory

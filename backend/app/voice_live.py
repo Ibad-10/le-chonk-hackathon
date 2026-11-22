@@ -285,10 +285,11 @@ class LiveCall:
                 }
             )
             await self._stt.recv()  # session.updated
-        except Exception as exc:
+        except Exception:
             # realtime STT unavailable: tell the UI to fall back to push-to-talk
+            logger.exception("realtime STT connect failed")
             await self._send(
-                {"type": "error", "detail": f"realtime transcription unavailable: {exc}", "fallback": "ptt"}
+                {"type": "error", "detail": "realtime transcription unavailable", "fallback": "ptt"}
             )
             await self.ws.close(1011)
             return

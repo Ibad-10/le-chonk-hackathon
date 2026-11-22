@@ -17,27 +17,41 @@ talks to the Mistral API.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.auth import current_player
 from app.db import Player
-from app.runs import NoLivesAvailable, RunNotFound, RunService
+from app.routes.runs import START_ERRORS, start_errors
+from app.runs import RunNotFound, RunService
 from app.voice import VoiceService
 
 router = APIRouter()
 
+MAX_AUDIO_BYTES = 5 * 1024 * 1024  # one push-to-talk clip
+
 
 class StartVoiceSession(BaseModel):
-    agent_id: str
-    mission_id: str | None = None
+    agent_id: str = Field(max_length=80)
+    mission_id: str | None = Field(default=None, max_length=40)
     player_id: str = "anon"  # deprecated: ignored, the verified `sub` is used
-    mode: str = "arena"
+    mode: Literal["arena", "practice"] = "arena"
 
 
 def get_voice_service(request: Request) -> VoiceService:
     runs: RunService = request.app.state.run_service
     return VoiceService(runs)
+
+
+def _own_session(service: VoiceService, session_id: str, player: Player) -> None:
+    """404 for unknown sessions, 403 unless the caller started the run."""
+    run = service.runs.repo.get(session_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="voice session not found")
+    if run.player_id != player.id:
+        raise HTTPException(status_code=403, detail="not your run")
 
 
 @router.post("/voice/sessions")
@@ -51,11 +65,10 @@ async def start_voice_session(
             player_id=player.id,
             mode=req.mode,
             mission_id=req.mission_id,
+            caller=player,  # same mode / owner / arena checks as POST /runs
         )
-    except NoLivesAvailable as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+    except START_ERRORS as exc:
+        raise start_errors(exc)
 
 
 @router.post("/voice/sessions/{session_id}/turn")
@@ -66,7 +79,10 @@ async def voice_turn(
     player: Player = Depends(current_player),
 ):
     service = get_voice_service(request)
-    audio = await file.read()
+    _own_session(service, session_id, player)
+    audio = await file.read(MAX_AUDIO_BYTES + 1)
+    if len(audio) > MAX_AUDIO_BYTES:
+        raise HTTPException(status_code=413, detail="audio clip larger than 5 MB")
     try:
         return await service.turn(
             session_id,
@@ -85,6 +101,7 @@ async def voice_session_status(
     session_id: str, request: Request, player: Player = Depends(current_player)
 ):
     service = get_voice_service(request)
+    _own_session(service, session_id, player)
     try:
         return service.status(session_id)
     except RunNotFound:
@@ -96,6 +113,7 @@ async def end_voice_session(
     session_id: str, request: Request, player: Player = Depends(current_player)
 ):
     service = get_voice_service(request)
+    _own_session(service, session_id, player)
     try:
         return service.end_session(session_id)
     except RunNotFound:

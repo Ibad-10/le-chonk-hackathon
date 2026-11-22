@@ -7,37 +7,55 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from app.auth import current_player, is_admin, is_agent_owner, stream_player
+from app.auth import current_player, stream_player
 from app.config import settings
-from app.db import Agent, Player
+from app.db import Player
 from app.models import RunChannel, RunMode
-from app.runs import AgentInCooldown, NoLivesAvailable, RunNotFound, RunService
-from sqlmodel import Session
+from app.runs import (
+    AgentInCooldown,
+    AgentNotFound,
+    NoLivesAvailable,
+    RunForbidden,
+    RunNotFound,
+    RunService,
+)
 
 router = APIRouter()
 
 
 class StartRunRequest(BaseModel):
-    agent_id: str
-    mission_id: str | None = None
+    agent_id: str = Field(max_length=80)
+    mission_id: str | None = Field(default=None, max_length=40)
     channel: RunChannel = "text"
     mode: RunMode = "arena"
-    player_id: str = "anon"
-    language: str = "auto"
+    player_id: str = "anon"  # deprecated: ignored, the verified `sub` is used
+    language: str = Field(default="auto", max_length=40)  # unknown -> "auto"
     spectate: bool = False  # v4.1: opt in to live spectators (GET /now-playing)
 
 
+MAX_MESSAGE_CHARS = 2000
+
+
 class MessageRequest(BaseModel):
-    text: str
+    text: str = Field(max_length=MAX_MESSAGE_CHARS)
 
 
 def get_service(request: Request) -> RunService:
     return request.app.state.run_service
 
 
-PLAYER_MODES = ("arena", "practice")  # genuine is dealt by the server; the rest are admin-only
+def start_errors(exc: Exception) -> HTTPException:
+    """RunService.start_run errors -> HTTP (shared with the voice routes)."""
+    if isinstance(exc, RunForbidden):
+        return HTTPException(status_code=403, detail=str(exc))
+    if isinstance(exc, AgentNotFound):
+        return HTTPException(status_code=404, detail="agent not found")
+    return HTTPException(status_code=409, detail=str(exc))  # no lives / cooldown
+
+
+START_ERRORS = (RunForbidden, AgentNotFound, NoLivesAvailable, AgentInCooldown)
 
 
 def _own_run(service: RunService, run_id: str, player: Player) -> None:
@@ -53,31 +71,19 @@ def _own_run(service: RunService, run_id: str, player: Player) -> None:
 @router.post("/runs")
 async def start_run(req: StartRunRequest, request: Request, player: Player = Depends(current_player)):
     service = get_service(request)
-    if req.mode not in PLAYER_MODES and not is_admin(player):
-        raise HTTPException(status_code=403, detail=f"mode {req.mode} is admin-only")
-    if req.mode == "practice":
-        # owner practice runs: allowed on any of the owner's agents even in
-        # cooldown; never change Elo or points (RunService gates on arena)
-        with Session(request.app.state.db_engine) as session:
-            agent = session.get(Agent, req.agent_id)
-        if agent is None:
-            raise HTTPException(status_code=404, detail="agent not found")
-        if not is_agent_owner(agent, player):
-            raise HTTPException(status_code=403, detail="practice runs are owner-only")
     try:
+        # mode gate, owner-only practice and arena rules live in start_run
         run = service.start_run(
             agent_id=req.agent_id,
             mission_id=req.mission_id,
             channel=req.channel,
             mode=req.mode,
-            player_id=player.id,  # v4.1: the player is the verified Clerk user
             language=req.language,
             spectate=req.spectate,  # v4.1: arena-wall opt-in
+            caller=player,  # v4.1: the player is the verified Clerk user
         )
-    except NoLivesAvailable as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
-    except AgentInCooldown as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
+    except START_ERRORS as exc:
+        raise start_errors(exc)
     duration = settings.run_voice_s if run.channel == "voice" else settings.run_text_s
     return {
         "run_id": run.id,
@@ -102,7 +108,7 @@ async def send_message(
 
 @router.get("/runs/{run_id}/stream")
 async def stream_message(
-    run_id: str, request: Request, text: str = Query(...), player: Player = Depends(stream_player)
+    run_id: str, request: Request, text: str = Query(..., max_length=MAX_MESSAGE_CHARS), player: Player = Depends(stream_player)
 ):
     """Live text chat over server-sent events.
 

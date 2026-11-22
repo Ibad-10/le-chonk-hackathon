@@ -110,14 +110,17 @@ class VoiceService:
         player_id: str = "anon",
         mode: str = "arena",
         mission_id: str | None = None,
+        caller: Any = None,
     ) -> dict[str, Any]:
-        """Start a voice run (channel="voice": 300 s limit, 60 s idle)."""
+        """Start a voice run (channel="voice": 300 s limit, 60 s idle). The
+        route passes `caller`, so the same checks as POST /runs apply."""
         run = self.runs.start_run(
             agent_id=agent_id,
             mission_id=mission_id,
             channel="voice",
             mode=mode,  # type: ignore[arg-type]
             player_id=player_id,
+            caller=caller,
         )
         return {
             "session_id": run.id,

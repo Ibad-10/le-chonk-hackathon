@@ -12,6 +12,8 @@ text endpoint). Tests substitute a fake LLM.
 
 from __future__ import annotations
 
+import re
+
 import json
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
@@ -41,6 +43,15 @@ _LANGUAGE_NAMES = {
     "no": "Norwegian",
     "cs": "Czech",
 }
+
+
+def normalize_language(value: str | None) -> str:
+    """Caller-supplied language -> a supported ISO code or "auto". It ends up in
+    the system prompt, so anything unknown becomes "auto"."""
+    v = (value or "").strip().lower()
+    if v in _LANGUAGE_NAMES:
+        return v
+    return next((code for code, name in _LANGUAGE_NAMES.items() if name.lower() == v), "auto")
 
 
 @dataclass
@@ -74,10 +85,11 @@ def agent_system_prompt(
 ) -> str:
     """Role prompt + exact tool signatures + the caller-language instruction,
     plus the owner's instructions and knowledge when a draft is being tested."""
-    if language == "auto":
+    code = language if re.fullmatch(r"[a-z]{2}", language or "") else "auto"
+    if code == "auto":
         lang_line = "Reply in the language the caller uses."
     else:
-        lang_line = f"Reply in {_LANGUAGE_NAMES.get(language, language)}."
+        lang_line = f"Reply in {_LANGUAGE_NAMES.get(code, code)}."
     tools = "\n".join(f"- {signature(name)}" for name in target.tools) or "- none"
     parts = [
         f"{target.role_prompt}\n"
