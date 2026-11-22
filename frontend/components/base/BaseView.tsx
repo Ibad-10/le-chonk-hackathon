@@ -66,7 +66,7 @@ export default function BaseView({ village, events = null, owner = false, onRepl
       style={{
         height: height ?? "70vh",
         // soft sky behind the village, never pure white
-        background: "radial-gradient(120% 90% at 50% 0%, #2b4a6b 0%, #1a2b3f 45%, #111113 100%)",
+        background: "linear-gradient(180deg, #4f86b8 0%, #86b4d6 55%, #b9d3e3 100%)",
       }}
     >
       <BaseScene

@@ -1,38 +1,53 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, type MutableRefObject } from "react";
 import * as THREE from "three";
-import { Canvas, useThree } from "@react-three/fiber";
-import { OrbitControls } from "@react-three/drei";
+import { Canvas } from "@react-three/fiber";
+import { Bounds, OrbitControls, useBounds } from "@react-three/drei";
+import { LocateFixed } from "lucide-react";
 
 import {
   MAP_HALF,
+  ENVOY_MODEL,
+  KIND_PARTS,
+  SCAFFOLD_PARTS,
+  TREASURY_DESTROYED_PARTS,
+  TROOP_MODELS,
+  mulberry32,
   type Village,
 } from "@/lib/base";
 
 import Building from "./Building";
-import { GlbModel } from "./GlbModel";
+import { GlbModel, preloadBaseAssets } from "./GlbModel";
 import Troop, { CoinBurst, Envoy } from "./Troop";
 import type { DirectorState } from "./useBaseDirector";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 
-const GRASS_A = new THREE.Color("#5d9c4f");
-const GRASS_B = new THREE.Color("#548f47");
+// Everything that can appear mid-run is fetched up front: a model loading on
+// demand would suspend the canvas (blank frame + camera refit) and delay troops.
+preloadBaseAssets([
+  ...new Set([
+    ...TROOP_MODELS,
+    ENVOY_MODEL,
+    ...[...SCAFFOLD_PARTS, ...TREASURY_DESTROYED_PARTS, ...Object.values(KIND_PARTS).flat(2)].map((p) => p.model),
+  ]),
+]);
 
-/** Grass ground tiles with a slight per-tile tint, instanced for speed. */
+const GRASS_A = new THREE.Color("#5a9a4b");
+const GRASS_B = new THREE.Color("#4e8b42");
+
+/** Grass ground tiles with a subtle seeded per-tile tint, instanced for speed. */
 function Ground() {
   const mesh = useRef<THREE.InstancedMesh>(null);
   const tiles = (MAP_HALF * 2) * (MAP_HALF * 2);
   const dummy = useMemo(() => new THREE.Object3D(), []);
   const colors = useMemo(() => {
-    const arr: THREE.Color[] = [];
-    for (let i = 0; i < tiles; i++) {
-      arr.push((i * 7 + ((i / 13) | 0)) % 3 === 0 ? GRASS_B : GRASS_A);
-    }
-    return arr;
+    const rand = mulberry32(7);
+    return Array.from({ length: tiles }, () => GRASS_A.clone().lerp(GRASS_B, rand() * 0.7));
   }, [tiles]);
 
-  useEffect(() => {
+  // layout effect: instances must be placed before drei Bounds measures the village
+  useLayoutEffect(() => {
     const m = mesh.current;
     if (!m) return;
     let i = 0;
@@ -47,15 +62,22 @@ function Ground() {
     }
     m.instanceMatrix.needsUpdate = true;
     if (m.instanceColor) m.instanceColor.needsUpdate = true;
+    m.computeBoundingBox();
+    m.computeBoundingSphere();
   }, [dummy, colors]);
 
   return (
+    <instancedMesh ref={mesh} args={[undefined, undefined, tiles]} receiveShadow>
+      <boxGeometry args={[1, 0.1, 1]} />
+      <meshStandardMaterial roughness={1} metalness={0} />
+    </instancedMesh>
+  );
+}
+
+/** Hills around the border (outside the camera fit box). */
+function Hills() {
+  return (
     <group>
-      <instancedMesh ref={mesh} args={[undefined, undefined, tiles]} receiveShadow>
-        <boxGeometry args={[1, 0.1, 1]} />
-        <meshStandardMaterial roughness={1} metalness={0} />
-      </instancedMesh>
-      {/* hills around the border */}
       {Array.from({ length: 18 }).map((_, i) => {
         const a = (i / 18) * Math.PI * 2;
         const r = MAP_HALF + 0.4;
@@ -138,17 +160,24 @@ function Camps({ village }: { village: Village }) {
   );
 }
 
-/** Fit the orthographic zoom so the whole map fills the canvas, on load and resize. */
-function FitCamera() {
-  const { camera, size } = useThree();
+/** Hands the drei Bounds api to the reset button outside the canvas. */
+function BoundsBridge({ apiRef }: { apiRef: MutableRefObject<ReturnType<typeof useBounds> | null> }) {
+  const api = useBounds();
   useEffect(() => {
-    // the isometric diamond is ~2*MAP_HALF*1.41 wide and ~half that tall on screen
-    const span = MAP_HALF * 2 * 1.41;
-    const zoom = Math.min(size.width / span, (size.height * 1.7) / span) * 0.95;
-    camera.zoom = THREE.MathUtils.clamp(zoom, 13, 55);
-    camera.updateProjectionMatrix();
-  }, [camera, size.width, size.height]);
+    apiRef.current = api;
+  }, [api, apiRef]);
   return null;
+}
+
+/** Keep the pan target (and camera with it, so the view never tilts) inside the map. */
+function clampPan(controls: { target: THREE.Vector3; object: THREE.Camera } | undefined) {
+  if (!controls) return;
+  const t = controls.target;
+  const before = t.clone();
+  t.x = THREE.MathUtils.clamp(t.x, -MAP_HALF + 2, MAP_HALF - 2);
+  t.z = THREE.MathUtils.clamp(t.z, -MAP_HALF + 2, MAP_HALF - 2);
+  t.y = THREE.MathUtils.clamp(t.y, -2, 6);
+  controls.object.position.add(t.clone().sub(before));
 }
 
 export interface BaseSceneProps {
@@ -175,25 +204,24 @@ export default function BaseScene({
   height = "100%",
 }: BaseSceneProps) {
   const reduced = usePrefersReducedMotion();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const controlsRef = useRef<any>(null);
+  const boundsApi = useRef<ReturnType<typeof useBounds> | null>(null);
 
   return (
+    <div className="relative h-full w-full" style={{ height }}>
     <Canvas
       orthographic
-      shadows
+      shadows="percentage"
       dpr={[1, 2]}
-      camera={{ position: [16, 16, 16], zoom: 24, near: -60, far: 160 }}
-      style={{ height, width: "100%", touchAction: "none" }}
+      camera={{ position: [16, 16, 16], zoom: 20, near: -60, far: 200 }}
+      style={{ height: "100%", width: "100%", touchAction: "none" }}
       onPointerMissed={() => onSelect(null)}
-      gl={{ antialias: true, alpha: true }}
+      gl={{ antialias: true, alpha: true, toneMapping: THREE.ACESFilmicToneMapping, outputColorSpace: THREE.SRGBColorSpace }}
     >
-      <FitCamera />
-      <hemisphereLight args={["#cfe6ff", "#4a5a35", 1.1]} />
+      <hemisphereLight args={["#cfe6ff", "#5b6b3a", 1.2]} />
       <directionalLight
         position={[14, 22, 8]}
-        intensity={2.2}
-        color="#fff1d6"
+        intensity={2.4}
+        color="#ffe7c2"
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-18}
@@ -202,33 +230,29 @@ export default function BaseScene({
         shadow-camera-bottom={-18}
         shadow-camera-far={60}
         shadow-bias={-0.0004}
+        shadow-radius={4}
       />
-      <ambientLight intensity={0.25} />
 
       <OrbitControls
-        ref={controlsRef}
         makeDefault
         target={[0, 0, 0]}
         enableRotate={false}
         enableZoom
-        minZoom={13}
-        maxZoom={55}
+        minZoom={6}
+        maxZoom={60}
         enablePan
         screenSpacePanning
         zoomToCursor={false}
         enableDamping={!reduced}
         dampingFactor={0.2}
-        onChange={(e?: unknown) => {
-          // pan limits
-          const t = (e as { target?: THREE.Vector3 } | undefined)?.target;
-          if (t) {
-            t.x = THREE.MathUtils.clamp(t.x, -MAP_HALF + 2, MAP_HALF - 2);
-            t.z = THREE.MathUtils.clamp(t.z, -MAP_HALF + 2, MAP_HALF - 2);
-            t.y = THREE.MathUtils.clamp(t.y, -2, 6);
-          }
-        }}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onChange={(e?: any) => clampPan(e?.target)}
       />
 
+      <Hills />
+      {/* camera fits this box on load and on resize (never the troops) */}
+      <Bounds fit observe margin={1.02} maxDuration={reduced ? 0.001 : 0.6}>
+      <BoundsBridge apiRef={boundsApi} />
       <Ground />
       <Paths village={village} />
       <Walls village={village} />
@@ -280,7 +304,10 @@ export default function BaseScene({
           onSelect={onSelect}
         />
       ))}
+      </Bounds>
 
+      {/* own boundary: a late model never hides the village or refits the camera */}
+      <Suspense fallback={null}>
       {director?.squads.map((s) => (
         <Troop key={s.id} squad={s} reduced={reduced} speedUp={director.speedUp} />
       ))}
@@ -288,6 +315,17 @@ export default function BaseScene({
         <Envoy key={e.id} from={e.from} to={e.to} text={e.text} reduced={reduced} />
       ))}
       <CoinBurst at={village.treasury.position} active={director?.treasuryDestroyed ?? false} />
+      </Suspense>
     </Canvas>
+    <button
+      type="button"
+      aria-label="Reset camera"
+      title="Reset camera"
+      onClick={() => boundsApi.current?.refresh().reset().fit()}
+      className="absolute left-3 top-3 z-10 grid size-9 place-items-center rounded-md border border-room-line bg-room-panel/90 text-room-text shadow hover:bg-room-panel-2"
+    >
+      <LocateFixed size={16} aria-hidden="true" />
+    </button>
+    </div>
   );
 }

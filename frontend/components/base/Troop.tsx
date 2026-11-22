@@ -45,11 +45,19 @@ function pointAt(path: Vec[], t: number): Vec {
   return path[path.length - 1];
 }
 
+/** Walk time for a fresh march: 1.5-2.5 s whatever the path length. */
+export function marchSeconds(path: Vec[]): number {
+  return THREE.MathUtils.clamp(pathLength(path) / 8, 1.5, 2.5);
+}
+
+const TROOP_SCALE = 2.6; // Kenney mini characters next to castle-kit towers
+
 /**
  * A troop squad: a Kenney character marching along the stone path from the map
- * edge to the targeted building, carrying a speech bubble with the (truncated)
- * player message. Falls when defeated, walks back with a white flag when sent
- * back. Reduced motion: no bob, positions jump (progress driven by director).
+ * edge to the targeted building in 1.5-2.5 s, carrying a one-line speech bubble
+ * with the (truncated) player message. Defeated: a puff of smoke and it falls;
+ * sent back: walks home with a white flag. Reduced motion: no bob, it jumps to
+ * where the director says it is.
  */
 export default function Troop({
   squad,
@@ -61,72 +69,98 @@ export default function Troop({
   speedUp: boolean;
 }) {
   const group = useRef<THREE.Group>(null);
-  const progress = useRef(squad.status === "marching" ? 0 : 1);
+  // distance walked along the path; speed fixed at spawn so an extended path
+  // (damage beat: advance to the inner wall) continues smoothly
+  const walked = useRef(squad.status === "marching" ? 0 : pathLength(squad.path));
+  const speed = useMemo(() => pathLength(squad.path) / marchSeconds(squad.path), []); // eslint-disable-line react-hooks/exhaustive-deps
   const model = TROOP_MODELS[squad.id % TROOP_MODELS.length];
-
-  const target = useMemo(() => {
-    if (squad.status === "sentBack") return 0;
-    if (squad.status === "marching") return 1;
-    return progress.current;
-  }, [squad.status]);
 
   useFrame((state, dt) => {
     if (!group.current) return;
-    const speed = (reduced ? 6 : 2.2) * (speedUp ? 2.5 : 1); // units per second
-    if (squad.status === "marching") {
-      progress.current = Math.min(1, progress.current + (dt * speed) / pathLength(squad.path));
+    const total = pathLength(squad.path);
+    const step = reduced ? total : dt * speed * (speedUp ? 2 : 1);
+    if (squad.status === "marching" || squad.status === "reached") {
+      walked.current = Math.min(total, walked.current + step);
     } else if (squad.status === "sentBack") {
-      progress.current = Math.max(0, progress.current - (dt * speed) / pathLength(squad.path));
+      walked.current = Math.max(0, walked.current - step);
     }
-    const t = squad.status === "sentBack" ? progress.current : squad.status === "marching" ? progress.current : target;
+    const t = walked.current / total;
     const p = pointAt(squad.path, t);
-    const next = pointAt(squad.path, Math.min(1, t + 0.01));
+    const ahead = pointAt(squad.path, Math.min(1, t + 0.01));
+    const moving = squad.status !== "defeated" && t > 0 && t < 1;
     group.current.position.set(p.x, 0, p.z);
-    if (!reduced) {
-      group.current.position.y = Math.abs(Math.sin(state.clock.elapsedTime * 8 + squad.id)) * 0.06;
+    if (!reduced && moving) {
+      group.current.position.y = Math.abs(Math.sin(state.clock.elapsedTime * 10 + squad.id)) * 0.08;
     }
-    const angle = Math.atan2(next.x - p.x, next.z - p.z);
-    const desired = squad.status === "sentBack" ? angle + Math.PI : angle;
-    group.current.rotation.y = desired;
+    if (ahead.x !== p.x || ahead.z !== p.z) {
+      const angle = Math.atan2(ahead.x - p.x, ahead.z - p.z);
+      group.current.rotation.y = squad.status === "sentBack" ? angle + Math.PI : angle;
+    }
     if (squad.status === "defeated") {
-      // fall over where it stands
-      group.current.rotation.x = -Math.PI / 2;
-      group.current.position.y = 0.1;
+      group.current.rotation.x = -Math.PI / 2; // fall over where it stands
+      group.current.position.y = 0.15;
     } else {
       group.current.rotation.x = 0;
     }
   });
 
   return (
-    <group ref={group}>
-      <group scale={2}>
+    <group ref={group} position={[squad.path[0].x, 0, squad.path[0].z]}>
+      <group scale={TROOP_SCALE}>
         <GlbModel model={model} />
       </group>
+      {squad.status === "defeated" && !reduced && <Puff />}
       {squad.status === "sentBack" && (
-        <group position={[0.25, 0.9, 0]}>
+        <group position={[0.35, 1.1, 0]}>
           <mesh>
-            <cylinderGeometry args={[0.02, 0.02, 0.7, 6]} />
-            <meshStandardMaterial color="#e8e8e8" />
+            <cylinderGeometry args={[0.03, 0.03, 0.9, 6]} />
+            <meshStandardMaterial color="#8a6a46" />
           </mesh>
-          <mesh position={[0.12, 0.3, 0]}>
-            <planeGeometry args={[0.24, 0.16]} />
-            <meshStandardMaterial color="#ffffff" side={THREE.DoubleSide} />
+          <mesh position={[0.17, 0.32, 0]}>
+            <planeGeometry args={[0.34, 0.22]} />
+            <meshStandardMaterial color="#f4f1ea" side={THREE.DoubleSide} />
           </mesh>
         </group>
       )}
-      {squad.text && (
-        <Html
-          position={[0, 1.5, 0]}
-          center
-         
-          zIndexRange={[20, 0]}
-          className="pointer-events-none select-none"
-        >
-          <div className="max-w-[220px] whitespace-nowrap rounded-lg border border-room-line bg-room-bg/95 px-2 py-1 text-[11px] text-room-text shadow">
+      {squad.text && squad.status !== "defeated" && (
+        <Html position={[0, 2.1, 0]} center zIndexRange={[20, 0]} className="pointer-events-none select-none">
+          <div className="whitespace-nowrap rounded-lg border border-room-line bg-room-bg/95 px-2 py-1 text-[11px] text-room-text shadow">
             {squad.text}
           </div>
         </Html>
       )}
+    </group>
+  );
+}
+
+/** Defeat puff: a few grey spheres that swell and fade out in 0.7 s. */
+function Puff() {
+  const group = useRef<THREE.Group>(null);
+  const age = useRef(0);
+  const offsets = useMemo(
+    () => Array.from({ length: 6 }, (_, i) => new THREE.Vector3(Math.cos(i) * 0.35, 0.3 + (i % 3) * 0.2, Math.sin(i) * 0.35)),
+    []
+  );
+  useFrame((_, dt) => {
+    if (!group.current) return;
+    age.current += dt;
+    const k = Math.min(1, age.current / 0.7);
+    group.current.visible = k < 1;
+    group.current.children.forEach((c, i) => {
+      c.position.copy(offsets[i]).multiplyScalar(1 + k * 1.5);
+      c.scale.setScalar(0.25 + k * 0.5);
+      ((c as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.85 * (1 - k);
+    });
+  });
+  // the troop group is tipped over (rotation.x = -90deg), so tip the puff back upright
+  return (
+    <group ref={group} rotation={[Math.PI / 2, 0, 0]}>
+      {offsets.map((_, i) => (
+        <mesh key={i}>
+          <sphereGeometry args={[1, 10, 10]} />
+          <meshBasicMaterial color="#d9d6cf" transparent depthWrite={false} />
+        </mesh>
+      ))}
     </group>
   );
 }
@@ -147,7 +181,7 @@ export function Envoy({
   const t = useRef(0);
   useFrame((_, dt) => {
     if (!group.current) return;
-    t.current = reduced ? 1 : Math.min(1, t.current + dt / 0.9);
+    t.current = reduced ? 1 : Math.min(1, t.current + dt / 1.6);
     const p = {
       x: from.x + (to.x - from.x) * t.current,
       z: from.z + (to.z - from.z) * t.current,
@@ -157,12 +191,12 @@ export function Envoy({
   });
   return (
     <group ref={group} position={[from.x, 0, from.z]}>
-      <group scale={2}>
+      <group scale={TROOP_SCALE}>
         <GlbModel model={ENVOY_MODEL} />
       </group>
       {text && (
-        <Html position={[0, 1.5, 0]} center zIndexRange={[20, 0]} className="pointer-events-none select-none">
-          <div className="max-w-[220px] whitespace-nowrap rounded-lg border border-room-line bg-room-panel-2/95 px-2 py-1 text-[11px] text-room-text shadow">
+        <Html position={[0, 2.1, 0]} center zIndexRange={[20, 0]} className="pointer-events-none select-none">
+          <div className="whitespace-nowrap rounded-lg border border-room-line bg-room-panel-2/95 px-2 py-1 text-[11px] text-room-text shadow">
             {text}
           </div>
         </Html>

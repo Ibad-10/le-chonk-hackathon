@@ -101,7 +101,7 @@ export function useBaseDirector(
             },
           ]);
           timers.current.push(
-            setTimeout(() => setEnvoys((e) => e.filter((x) => x.id !== id)), 1800)
+            setTimeout(() => setEnvoys((e) => e.filter((x) => x.id !== id)), 2600)
           );
           break;
         }
@@ -176,8 +176,32 @@ export function useBaseDirector(
     [village, pushBanner]
   );
 
-  // process queued beats, one every STEP_MS (instantly when reduced motion)
+  // Live play appends events one by one: keep the scene and continue from where
+  // we are. Only a different list (new village, another replay) starts over.
+  const prevBeats = useRef<Beat[]>([]);
   useEffect(() => {
+    const prev = prevBeats.current;
+    prevBeats.current = beats;
+    const appended =
+      prev.length <= beats.length && prev.every((b, i) => JSON.stringify(b) === JSON.stringify(beats[i]));
+    if (appended) {
+      // a fresh player message must show its troop now (< 300 ms), not after
+      // the queue: apply everything up to the newest spawn at once. A whole
+      // replay list arriving at once still plays beat by beat.
+      // ponytail: "live" = at most 2 new beats per update; a burst of more replays normally
+      const added = beats.length - prev.length;
+      if (added > 0 && (prev.length > 0 || added <= 2)) {
+        let last = -1;
+        for (let i = seenRef.current; i < beats.length; i++) if (beats[i].kind === "spawn") last = i;
+        while (seenRef.current <= last) {
+          applyBeat(beats[seenRef.current]);
+          seenRef.current += 1;
+        }
+      }
+      return;
+    }
+    timers.current.forEach(clearTimeout);
+    timers.current = [];
     seenRef.current = 0;
     setSquads([]);
     setEnvoys([]);
@@ -186,28 +210,27 @@ export function useBaseDirector(
     setFiring({});
     setTreasuryDestroyed(false);
     setEndBanner(null);
-  }, [beats]);
+  }, [beats, applyBeat]);
 
+  // process queued beats, one every STEP_MS (instantly when reduced motion)
   useEffect(() => {
-    let cancelled = false;
+    let stepTimer: ReturnType<typeof setTimeout> | undefined;
     const step = () => {
-      if (cancelled) return;
       if (seenRef.current < beats.length) {
         applyBeat(beats[seenRef.current]);
         seenRef.current += 1;
         setPending(beats.length - seenRef.current);
-        timers.current.push(setTimeout(step, reduced ? 0 : STEP_MS));
+        stepTimer = setTimeout(step, reduced ? 0 : STEP_MS);
       } else {
         setPending(0);
       }
     };
     step();
-    return () => {
-      cancelled = true;
-      timers.current.forEach(clearTimeout);
-      timers.current = [];
-    };
+    return () => clearTimeout(stepTimer);
   }, [beats, applyBeat, reduced]);
+
+  // banner / envoy clean-up timers only die with the component
+  useEffect(() => () => timers.current.forEach(clearTimeout), []);
 
   const skip = useCallback(() => {
     while (seenRef.current < beats.length) {

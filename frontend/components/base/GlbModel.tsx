@@ -26,13 +26,19 @@ export function GlbModel({
   const cloned = useMemo(() => {
     const c = skeletonClone(scene);
     c.traverse((obj) => {
-      if ((obj as THREE.Mesh).isMesh) {
-        obj.castShadow = castShadow;
-        obj.receiveShadow = receiveShadow;
+      const mesh = obj as THREE.Mesh;
+      if (mesh.isMesh) {
+        mesh.castShadow = castShadow;
+        mesh.receiveShadow = receiveShadow;
+        // Kenney "colormap" materials are textured; no map = the white-village bug
+        const mat = mesh.material as THREE.MeshStandardMaterial;
+        if (process.env.NODE_ENV !== "production" && mat.name === "colormap" && !mat.map) {
+          console.warn(`[village] ${model}: colormap material has no texture map`);
+        }
       }
     });
     return c;
-  }, [scene, castShadow, receiveShadow]);
+  }, [scene, castShadow, receiveShadow, model]);
   return <primitive object={cloned} />;
 }
 
@@ -50,5 +56,6 @@ export function ModelPartView({ part }: { part: ModelPart }) {
 }
 
 export function preloadBaseAssets(models: string[]) {
+  if (typeof window === "undefined") return; // relative URLs only resolve in the browser
   models.forEach((m) => useGLTF.preload(BASE_ASSET(m)));
 }
