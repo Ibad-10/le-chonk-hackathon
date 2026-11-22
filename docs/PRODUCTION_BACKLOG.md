@@ -8,7 +8,7 @@ Still in development (not public). Goal: every feature, page and API at producti
 - [x] Opaque ids on the public `/events` feed (no run ids).
 - [x] Race fixes: publish vs draft, the 3-agent limit, retest summary filtered by agent.
 - [ ] Access-denied and error states on every page (owner, base, admin, challenge), ready for `OPEN_ACCESS=0`.
-- [ ] Structured logging and a `/health` that also checks the database and Mistral key.
+- [x] Structured logging and a `/health` that also checks the database and Mistral key.
 
 ## Game and product
 - [x] Rex, a deliberately weak training-dummy agent for new players and demos.

@@ -7,9 +7,13 @@ runs are persisted through SQLiteRunsRepo.
 
 from __future__ import annotations
 
+import json
+import logging
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth import ClerkAuth
@@ -77,7 +81,46 @@ app.include_router(voice_live_router)
 
 @app.get("/health")
 def health() -> dict[str, str]:
+    """Liveness: the process is up."""
     return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready(request: Request) -> JSONResponse:
+    """Readiness: database reachable and Mistral configured. 503 if not."""
+    from sqlalchemy import text
+
+    checks: dict[str, bool] = {"mistral_key": bool(settings.mistral_api_key)}
+    try:
+        with request.app.state.db_engine.connect() as conn:
+            conn.execute(text("select 1"))
+        checks["database"] = True
+    except Exception:
+        checks["database"] = False
+    ok = all(checks.values())
+    return JSONResponse({"status": "ok" if ok else "degraded", "checks": checks}, status_code=200 if ok else 503)
+
+
+_access_log = logging.getLogger("redroom.access")
+
+
+@app.middleware("http")
+async def access_log(request: Request, call_next):
+    """One JSON line per request: method, path (never the query string: it can
+    carry tokens), status and duration."""
+    start = time.perf_counter()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        return response
+    finally:
+        _access_log.info(json.dumps({
+            "method": request.method,
+            "path": request.url.path,
+            "status": status,
+            "ms": round((time.perf_counter() - start) * 1000, 1),
+        }))
 
 
 if __name__ == "__main__":
