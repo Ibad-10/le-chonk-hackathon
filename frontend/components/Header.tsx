@@ -5,6 +5,7 @@ import { isDemoData, subscribeDemoData } from "@/lib/api";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth, UserButton } from "@clerk/nextjs";
+import NotificationBell from "@/components/NotificationBell";
 import { CalendarDays, FlaskConical, Hammer, Radio, Shield, Swords, Trophy, type LucideIcon } from "lucide-react";
 
 // Two modes (Attack / Defend) plus the leaderboard and the live wall.
@@ -87,6 +88,7 @@ export default function Header() {
               Sign in
             </Link>
           )}
+          {isLoaded && isSignedIn && <NotificationBell />}
           {isLoaded && isSignedIn && <UserButton />}
         </div>
       </div>

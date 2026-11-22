@@ -179,3 +179,36 @@ async def leaderboard_agents(request: Request, stream: str | None = Query(defaul
 async def me(player: Player = Depends(current_player)):
     """Who am I: the frontend uses this to gate admin-only pages."""
     return {"id": player.id, "is_admin": is_admin(player)}
+
+
+@router.get("/me/notifications")
+async def my_notifications(
+    request: Request, since: float = Query(0.0, ge=0), player: Player = Depends(current_player)
+):
+    """Breaks of the caller's own agents after `since` (unix seconds), newest first.
+    Tactic family only; never transcripts."""
+    from datetime import datetime, timezone
+
+    from app.db import LogbookEntry
+
+    cutoff = datetime.fromtimestamp(since, tz=timezone.utc).replace(tzinfo=None)
+    with Session(_engine(request)) as session:
+        mine = {a.id: a.name for a in session.exec(select(Agent).where(Agent.owner_id == player.id)).all()}
+        if not mine:
+            return []
+        rows = session.exec(
+            select(LogbookEntry)
+            .where(LogbookEntry.agent_id.in_(list(mine)), LogbookEntry.created_at > cutoff)
+            .order_by(LogbookEntry.created_at.desc())
+            .limit(20)
+        ).all()
+    return [
+        {
+            "id": r.id,
+            "agent_id": r.agent_id,
+            "agent_name": mine[r.agent_id],
+            "tactic_family": r.family,
+            "at": r.created_at.replace(tzinfo=timezone.utc).timestamp(),
+        }
+        for r in rows
+    ]

@@ -17,7 +17,7 @@ Still in development (not public). Goal: every feature, page and API at producti
 - [x] Arena wall and home ticker: dedupe repeated events (count shown).
 - [x] Try-my-agent share link: "Share challenge link" on every agent page opens a raid on it.
 - [x] Agent duels: house agents only, admin-only (company), never offered to players.
-- [ ] Notifications when your agent is broken.
+- [x] Notifications when your agent is broken: header bell, polled every minute.
 
 ## Shipped
 - [x] Export agent package and self-host runner (`selfhost/`), with `--check` regression replay.

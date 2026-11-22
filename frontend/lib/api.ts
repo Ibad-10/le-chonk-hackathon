@@ -626,3 +626,20 @@ export async function getMe(token?: Token): Promise<{ id: string; is_admin: bool
   if (!res.ok) throw new Error(`API ${res.status}`);
   return res.json();
 }
+
+export interface BreakNotification {
+  id: string;
+  agent_id: string;
+  agent_name: string;
+  tactic_family: string | null;
+  at: number;
+}
+
+/** GET /me/notifications: breaks of my own agents after `since` (unix seconds). */
+export async function getNotifications(token: Token, since: number): Promise<BreakNotification[]> {
+  const res = await fetch(`${BASE_URL}/me/notifications?since=${since}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error(`API ${res.status}`);
+  return res.json();
+}

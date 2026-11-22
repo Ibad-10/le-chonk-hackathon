@@ -286,3 +286,25 @@ def test_me_reports_admin(tmp_path, monkeypatch):
     client = TestClient(app)
     assert client.get("/me", headers=_auth("user_123")).json() == {"id": "user_123", "is_admin": True}
     assert client.get("/me", headers=_auth("user_999")).json()["is_admin"] is False
+
+
+def test_notifications_only_my_agents(tmp_path):
+    from datetime import datetime, timedelta
+
+    from app.db import LogbookEntry, RunRow
+    from app.routes.agents import router as agents_router
+
+    app = _app(tmp_path)
+    app.include_router(agents_router)
+    engine = app.state.db_engine
+    with Session(engine) as s:
+        for i, agent_id in enumerate(["my-agent", "bank-ava"]):
+            s.add(RunRow(id=f"r{i}", agent_id=agent_id, agent_version=1, player_id="user_999"))
+            s.add(LogbookEntry(id=f"l{i}", agent_id=agent_id, version=1, run_id=f"r{i}", outcome="win",
+                               family="urgency", created_at=datetime.utcnow() - timedelta(minutes=1)))
+        s.commit()
+    client = TestClient(app)
+    mine = client.get("/me/notifications", headers=_auth("user_123")).json()
+    assert [n["agent_id"] for n in mine] == ["my-agent"]
+    assert mine[0]["tactic_family"] == "urgency"
+    assert client.get("/me/notifications", params={"since": 4102444800}, headers=_auth("user_123")).json() == []
