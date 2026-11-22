@@ -228,7 +228,10 @@ def publish_draft(
         ).first()
         if draft is None:
             raise KeyError(f"no draft {draft_version} for agent {agent_id}")
-        agent = session.get(Agent, agent_id)
+        if draft.status == "published":
+            raise ValueError(f"draft {draft_version} is already published")
+        # row lock: two parallel publishes can't both take the same version number
+        agent = session.exec(select(Agent).where(Agent.id == agent_id).with_for_update()).first()
         if agent is None:
             raise KeyError(f"no agent {agent_id}")
         new_version = agent.current_version + 1

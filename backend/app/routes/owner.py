@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.auth import current_player, is_agent_owner
@@ -127,6 +128,10 @@ async def post_publish(
         return publish_draft(_engine(request), _run_service(request), agent_id, draft_version)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except IntegrityError:
+        raise HTTPException(status_code=409, detail="another publish just landed: refresh and try again")
 
 
 @router.get("/agents/{agent_id}/graph")
@@ -152,7 +157,14 @@ async def list_versions(
                 AgentDraft.agent_id == agent_id, AgentDraft.status == "draft"
             )
         ).all()
-        retests = session.exec(select(RetestResult)).all()
+        from app.db import LogbookEntry
+
+        # only this agent's retests (draft numbers repeat across agents)
+        retests = session.exec(
+            select(RetestResult)
+            .join(LogbookEntry, RetestResult.log_entry_id == LogbookEntry.id)
+            .where(LogbookEntry.agent_id == agent_id)
+        ).all()
 
     def _retest_summary(version: int) -> dict:
         rows = [r for r in retests if r.draft_version == version]

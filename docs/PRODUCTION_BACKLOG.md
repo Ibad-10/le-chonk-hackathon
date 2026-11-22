@@ -6,7 +6,7 @@ Still in development (not public). Goal: every feature, page and API at producti
 - [x] CI: GitHub Action runs backend pytest, frontend vitest and `next build` on every push and PR.
 - [x] Per-player usage limits on Mistral-backed routes (messages, voice turns, analyse, retest, placement) so no one can run up the API bill.
 - [x] Opaque ids on the public `/events` feed (no run ids).
-- [ ] Race fixes: publish vs draft, the 3-agent limit, retest summary filtered by agent.
+- [x] Race fixes: publish vs draft, the 3-agent limit, retest summary filtered by agent.
 - [ ] Access-denied and error states on every page (owner, base, admin, challenge), ready for `OPEN_ACCESS=0`.
 - [ ] Structured logging and a `/health` that also checks the database and Mistral key.
 

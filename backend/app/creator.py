@@ -44,6 +44,10 @@ def create_agent(
         role_prompt=template.role_prompt.replace(template.name, name),
     )
     with Session(engine) as session:
+        # lock the owner's player row so two parallel creates can't both pass the limit
+        from app.db import Player
+
+        session.exec(select(Player).where(Player.id == owner_id).with_for_update()).first()
         owned = session.exec(select(Agent).where(Agent.owner_id == owner_id)).all()
         if len(owned) >= MAX_AGENTS_PER_PLAYER:
             raise AgentLimitReached()
