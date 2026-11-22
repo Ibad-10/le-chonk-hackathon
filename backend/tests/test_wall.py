@@ -167,7 +167,7 @@ def test_agent_broken_and_held_write_public_events(tmp_path):
     for e in events:
         assert set(e.keys()) == {
             "id", "type", "kind", "agent_id", "agent_name",
-            "tactic_family", "version", "created_at", "at",
+            "tactic_family", "version", "created_at", "at", "count",
         }
 
 
