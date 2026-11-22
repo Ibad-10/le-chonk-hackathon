@@ -103,3 +103,49 @@ async def research_latest(request: Request):
         "created_at": scan.created_at.isoformat(),
         "tactics": public_tactics(scan.tactics),
     }
+
+
+# --- house-agent duels (admin only; never offered to players) -----------------------
+
+
+class DuelRequest(BaseModel):
+    agent_a: str
+    agent_b: str
+
+
+def _duel_service(request: Request):
+    from app.duels import DuelService
+    from app.training import run_exam
+
+    svc = getattr(request.app.state, "duel_service", None)
+    if svc is None:
+        from app.creator import load_runtime
+
+        llm = request.app.state.retest_service.llm
+        engine = _engine(request)
+
+        async def exam(agent_id: str):
+            _, instructions, knowledge = load_runtime(engine, agent_id)  # live published version
+            return await run_exam(llm, agent_id, instructions, knowledge)
+
+        svc = DuelService(exam)
+        request.app.state.duel_service = svc
+    return svc
+
+
+@router.post("/admin/duels")
+async def start_duel(req: DuelRequest, request: Request, admin: Player = Depends(require_admin)):
+    from app.duels import DuelNotAllowed
+
+    try:
+        return {"job_id": _duel_service(request).start(req.agent_a, req.agent_b)}
+    except DuelNotAllowed as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.get("/admin/duels/{job_id}")
+async def get_duel(job_id: str, request: Request, admin: Player = Depends(require_admin)):
+    job = _duel_service(request).jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="no such duel")
+    return job
