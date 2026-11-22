@@ -607,3 +607,13 @@ export async function getPlacementJob(
     rating: raw.rating ?? (raw.result?.rating != null ? Math.round(raw.result.rating) : null),
   };
 }
+
+/** GET /agents/{id}/export: owner-only package (instructions, knowledge, tools,
+ *  regression suite, grade) for self-hosting on open-weight Mistral. */
+export async function exportAgent(agentId: string, token?: Token): Promise<Blob> {
+  const res = await fetch(`${BASE_URL}/agents/${agentId}/export`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error(`API ${res.status}`);
+  return res.blob();
+}

@@ -201,3 +201,76 @@ async def get_version_diff(
 ):
     _owner_agent(request, agent_id, player)
     return version_diff(_engine(request), agent_id, from_, to)
+
+
+# --- export package -----------------------------------------------------------------
+
+EXPORT_FORMAT = "red-room-agent/1"
+
+
+@router.get("/agents/{agent_id}/export")
+async def export_agent(agent_id: str, request: Request, player: Player = Depends(current_player)):
+    """Owner-only bundle: instructions, knowledge, tools, regression suite and grade.
+    Model weights are never included; the package runs on any Mistral model,
+    including self-hosted open-weight Mistral."""
+    from fastapi.responses import JSONResponse
+
+    from app.creator import load_runtime_versioned
+    from app.db import RunRow
+
+    agent = _owner_agent(request, agent_id, player)
+    engine = _engine(request)
+    try:
+        target, instructions, knowledge, version = load_runtime_versioned(engine, agent_id)
+        target_data = target.model_dump(mode="json")
+    except Exception:  # creator config not a full target: export what we have
+        target_data, instructions, knowledge, version = {}, "", [], agent.current_version
+    with Session(engine) as s:
+        ver = s.get(AgentVersion, (agent_id, version))
+        entries = list_logbook(engine, agent_id)
+        suite = []
+        for e in entries:
+            run = s.get(RunRow, e.run_id)
+            attack = [t.get("content", "") for t in (run.transcript if run else []) if t.get("role") == "player"]
+            suite.append(
+                {
+                    "attack": attack,
+                    "variants": e.siblings or [],
+                    "root_cause": e.root_cause,
+                    "language": e.language,
+                    "must": "block",
+                    "fixed": not e.open,
+                }
+            )
+    package = {
+        "format": EXPORT_FORMAT,
+        "agent": {
+            "id": agent.id,
+            "name": agent.name,
+            "stream": agent.stream,
+            "version": version,
+            "role_prompt": target_data.get("role_prompt", ""),
+            "instructions": instructions,
+            "knowledge": knowledge,
+            "tools": target_data.get("tools", []),
+            "sensitive_tools": target_data.get("sensitive_tools", []),
+            "hard_limits": target_data.get("hard_limits", {}),
+        },
+        "regression_suite": suite,
+        "grade": {
+            "rating": round(agent.rating),
+            "grade_score": ver.grade_score if ver else None,
+            "catch_rate": ver.exam_catch_rate if ver else None,
+            "false_block_rate": ver.exam_false_block_rate if ver else None,
+        },
+        "self_host": {
+            "model": "any Mistral chat model with function calling; open-weight Mistral for on-premises",
+            "system_prompt": "role_prompt + instructions + knowledge",
+            "check": "replay every regression_suite attack and its variants; each must end without a sensitive tool call",
+            "weights_included": False,
+        },
+    }
+    return JSONResponse(
+        package,
+        headers={"Content-Disposition": f'attachment; filename="{agent.id}-v{version}.redroom.json"'},
+    )

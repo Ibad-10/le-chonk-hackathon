@@ -34,6 +34,7 @@ import {
   createDraft,
   getAgent,
   getLogbook,
+  exportAgent,
   getRetestJob,
   getVersionDiff,
   getVersions,
@@ -417,6 +418,22 @@ function OwnerPageInner({ params }: { params: Promise<{ id: string }> }) {
     }
   }, [draft, getToken, id, isSignedIn]);
 
+  const onExport = useCallback(async () => {
+    try {
+      const token = isSignedIn ? await getToken() : null;
+      const blob = await exportAgent(id, token);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${id}.redroom.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Export downloaded: instructions, knowledge, tools, regression suite and grade.");
+    } catch {
+      toast.error("Couldn't export this agent. Try again.");
+    }
+  }, [getToken, id, isSignedIn]);
+
   const onPublish = useCallback(
     async (force: boolean) => {
       setPublishing(true);
@@ -471,6 +488,9 @@ function OwnerPageInner({ params }: { params: Promise<{ id: string }> }) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="secondary" onClick={() => void onExport()}>
+            Export agent
+          </Button>
           <Button asChild>
             <Link href={`/agents/${id}/base`}>
               <Castle aria-hidden="true" /> Your base
