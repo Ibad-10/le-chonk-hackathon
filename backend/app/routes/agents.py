@@ -191,7 +191,7 @@ async def my_notifications(
 
     from app.db import LogbookEntry
 
-    cutoff = datetime.fromtimestamp(since, tz=timezone.utc).replace(tzinfo=None)
+    cutoff = datetime.fromtimestamp(since, tz=timezone.utc)
     with Session(_engine(request)) as session:
         mine = {a.id: a.name for a in session.exec(select(Agent).where(Agent.owner_id == player.id)).all()}
         if not mine:
@@ -208,7 +208,7 @@ async def my_notifications(
             "agent_id": r.agent_id,
             "agent_name": mine[r.agent_id],
             "tactic_family": r.family,
-            "at": r.created_at.replace(tzinfo=timezone.utc).timestamp(),
+            "at": (r.created_at if r.created_at.tzinfo else r.created_at.replace(tzinfo=timezone.utc)).timestamp(),
         }
         for r in rows
     ]

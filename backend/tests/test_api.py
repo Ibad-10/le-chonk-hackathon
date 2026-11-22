@@ -289,7 +289,7 @@ def test_me_reports_admin(tmp_path, monkeypatch):
 
 
 def test_notifications_only_my_agents(tmp_path):
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     from app.db import LogbookEntry, RunRow
     from app.routes.agents import router as agents_router
@@ -301,7 +301,7 @@ def test_notifications_only_my_agents(tmp_path):
         for i, agent_id in enumerate(["my-agent", "bank-ava"]):
             s.add(RunRow(id=f"r{i}", agent_id=agent_id, agent_version=1, player_id="user_999"))
             s.add(LogbookEntry(id=f"l{i}", agent_id=agent_id, version=1, run_id=f"r{i}", outcome="win",
-                               family="urgency", created_at=datetime.utcnow() - timedelta(minutes=1)))
+                               family="urgency", created_at=datetime.now(timezone.utc) - timedelta(minutes=1)))
         s.commit()
     client = TestClient(app)
     mine = client.get("/me/notifications", headers=_auth("user_123")).json()
