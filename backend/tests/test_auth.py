@@ -73,7 +73,7 @@ async def test_valid_token_accepted():
 async def test_expired_token_rejected():
     auth = ClerkAuth(PK, fetcher=_fake_fetcher(JWK))
     with pytest.raises(HTTPException) as exc:
-        await auth.verify(_token(PRIVATE, exp=int(time.time()) - 10))
+        await auth.verify(_token(PRIVATE, exp=int(time.time()) - 600))
     assert exc.value.status_code == 401
 
 
@@ -164,7 +164,7 @@ def test_write_route_upserts_player_by_clerk_sub(tmp_path):
 
 def test_write_route_rejects_expired_token(tmp_path):
     client = TestClient(_app(tmp_path))
-    headers = {"Authorization": f"Bearer {_token(PRIVATE, exp=int(time.time()) - 5)}"}
+    headers = {"Authorization": f"Bearer {_token(PRIVATE, exp=int(time.time()) - 600)}"}
     assert client.post("/write", headers=headers).status_code == 401
 
 

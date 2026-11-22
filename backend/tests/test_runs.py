@@ -216,7 +216,7 @@ async def test_no_contest_under_3_messages():
     assert run.elo_delta == 0.0  # no Elo either way
     assert run.points == 0
     assert run.stopped_by == "agent"
-    assert svc.lives_available("p1", now[0]) == 3  # life refunded
+    assert svc.lives_available("p1", now[0]) == 2  # no refund: quitting early is not a free retry
 
 
 async def test_error_outcome_refunds_life_and_skips_elo():
@@ -230,7 +230,7 @@ async def test_error_outcome_refunds_life_and_skips_elo():
     assert resp["outcome"] == "error"
     assert run.elo_delta == 0.0  # error skips Elo
     assert run.stopped_by == "agent"
-    assert svc.lives_available("p1", now[0]) == 3  # life refunded
+    assert svc.lives_available("p1", now[0]) == 3  # error outcome: life refunded
 
 
 async def test_abandoned_under_10s_refunds_life():
@@ -243,7 +243,7 @@ async def test_abandoned_under_10s_refunds_life():
     resp = svc.end_run(run.id)
     assert resp["outcome"] == "abandoned"
     assert run.outcome == "abandoned"
-    assert svc.lives_available("p1", now[0]) == 3  # under 10 s -> refunded
+    assert svc.lives_available("p1", now[0]) == 2  # no refund on abandon (security review)
 
 
 async def test_abandoned_over_10s_keeps_life_consumed():

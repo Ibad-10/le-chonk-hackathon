@@ -416,7 +416,7 @@ def test_route_websocket_auth_and_no_key_leak():
 
     app = _ws_app(runs, stt, tts)
     client = TestClient(app)
-    run = runs.start_run(agent_id="bank-ava", channel="voice", mode="ladder", player_id="anon")
+    run = runs.start_run(agent_id="bank-ava", channel="voice", mode="ladder", player_id="user_live_123")
     received: list[dict] = []
     with client.websocket_connect(f"/voice/live/{run.id}?token={token}") as ws:
         received.append(ws.receive_json())  # ready
@@ -475,7 +475,7 @@ def test_first_message_auth_required_without_query_token():
     factory_calls: list[tuple] = []
     app = _ws_app(runs, stt, tts, factory_spy=factory_calls)
     client = TestClient(app)
-    run = runs.start_run(agent_id="bank-ava", channel="voice", mode="ladder", player_id="anon")
+    run = runs.start_run(agent_id="bank-ava", channel="voice", mode="ladder", player_id="user_live_456")
 
     # (a) first message is audio, not auth -> rejected
     with pytest.raises(WebSocketDisconnect):

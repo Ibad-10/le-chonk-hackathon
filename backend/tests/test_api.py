@@ -55,6 +55,7 @@ def _app(tmp_path) -> FastAPI:
         logbook=SQLiteLogbookRepo(engine),
         now_fn=lambda: 1000.0,
         rng=random.Random(0),
+        engine=engine,
     )
     app.state.retest_service = RetestService(llm, engine, app.state.run_service)
     app.include_router(runs_router)
