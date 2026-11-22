@@ -6,6 +6,7 @@ import { useAuth } from "@clerk/nextjs";
 
 import AgentLab from "@/components/admin/AgentLab";
 import ResearchPanel from "@/components/admin/ResearchPanel";
+import DuelPanel from "@/components/admin/DuelPanel";
 import { HOUSE_AGENTS } from "@/lib/adminApi";
 import { getMe } from "@/lib/api";
 
@@ -56,6 +57,9 @@ export default function AdminPage() {
       </div>
       <div className="mt-4">
         <ResearchPanel />
+      </div>
+      <div className="mt-4">
+        <DuelPanel />
       </div>
     </div>
   );

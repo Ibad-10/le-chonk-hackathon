@@ -60,3 +60,24 @@ export const getTrainingCycles = (agentId: string, token: string | null | undefi
 
 export const getResearchLatest = (token?: string | null) =>
   call<ResearchLatest>("/research/latest", token);
+
+export interface DuelSide {
+  agent_id: string;
+  grade: number;
+  catch_rate: number;
+  false_block_rate: number;
+}
+
+export interface DuelJob {
+  job_id: string;
+  status: "running" | "done" | "error";
+  agents: string[];
+  result: { sides: DuelSide[]; winner: string | null } | null;
+  error?: string;
+}
+
+export const startDuel = (token: string | null | undefined, agent_a: string, agent_b: string) =>
+  call<{ job_id: string }>("/admin/duels", token, { method: "POST", body: JSON.stringify({ agent_a, agent_b }) });
+
+export const getDuel = (token: string | null | undefined, jobId: string) =>
+  call<DuelJob>(`/admin/duels/${jobId}`, token);

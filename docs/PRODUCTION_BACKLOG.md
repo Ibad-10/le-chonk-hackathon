@@ -16,7 +16,7 @@ Still in development (not public). Goal: every feature, page and API at producti
 - [ ] Fair placement grades: genuine callers give the right verification details so careful agents aren't graded D.
 - [x] Arena wall and home ticker: dedupe repeated events (count shown).
 - [x] Try-my-agent share link: "Share challenge link" on every agent page opens a raid on it.
-- [ ] Agent duels.
+- [x] Agent duels: house agents only, admin-only (company), never offered to players.
 - [ ] Notifications when your agent is broken.
 
 ## Shipped
