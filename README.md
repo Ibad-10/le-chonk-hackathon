@@ -30,14 +30,16 @@ AI agents are being given the power to act: move money, issue refunds, read priv
 
 ## Try it
 
-1. **Attack a house agent.** Sign in, pick Ava (bank), Max (refunds) or Pip (assistant) and try to make it move money or leak a file. Chat with text (streamed replies) or call with live voice.
+1. **Attack a house agent.** Sign in, pick Ava (bank), Max (refunds) or Pip (assistant) and try to make it move money or leak a file. New here? Start with **Rex**, the over-helpful training dummy who can actually be broken. Chat with text (streamed replies) or call with live voice.
 2. **Build your own agent.** Go to `/create`, pick a stream, write instructions and knowledge, and run the placement test. You can own up to 3 agents.
 3. **Defend it.** Open `/agents/{id}/owner`. Read the logbook and the breaking moment, edit a draft, retest it 3 times with sibling variants, then publish a new version.
 4. **Visit the 3D village base** at `/agents/{id}/base` and the knowledge graph at `/agents/{id}/graph`.
 5. **Climb the leaderboards** at `/leaderboard` and watch the arena wall at `/arena-wall`.
 6. **Play the daily challenge** at `/challenge` to earn XP and ranks.
-7. **Admin only:** the House agents lab at `/admin` runs the research agent and training cycles.
-8. **Red Room MCP server for Vibe.** Attack an agent and read its logbook from inside Vibe. See [docs/MCP.md](docs/MCP.md).
+7. **Share a challenge.** Every agent page has "Share challenge link": send a friend a link that opens a raid on that agent.
+8. **Export and self-host.** On the Defend page, "Export agent" downloads the agent package; run it on your own server or laptop with [selfhost/](selfhost/README.md).
+9. **Admin only:** the House agents lab at `/admin` runs the research agent, training cycles and house duels.
+10. **Red Room MCP server for Vibe.** Attack an agent and read its logbook from inside Vibe. See [docs/MCP.md](docs/MCP.md).
 
 ## What works today
 
@@ -73,32 +75,44 @@ AI agents are being given the power to act: move money, issue refunds, read priv
 | Sandbox bank details (sort codes 99/00) pass moderation so agents can be broken | Working | `backend/app/moderation.py` |
 | Retest for creator agents (config loaded from the database) | Working | `backend/app/retest.py` |
 | Hackathon open access: every signed-in player can use every agent's owner tools (`OPEN_ACCESS=1`) | Working | `backend/app/auth.py` |
-| Hosted backend | Live on a laptop | Cloudflare quick tunnel today; see [Deploy](#deploy) |
+| Rex, the training-dummy house agent (breaks 3/3 on the grandson scam; Ava holds 3/3) | Working | `targets/bank-rex.json` |
+| Export agent package (instructions, knowledge, tools, regression suite, grade; never weights) | Working | `backend/app/routes/owner.py` (`/export`), Defend page |
+| Self-host runner: Mistral API, vLLM or Ollama, with `--check` regression replay for CI | Working | `selfhost/run_agent.py` |
+| Per-player usage limits on every Mistral-backed route (429 with Retry-After) | Working | `backend/app/ratelimit.py` |
+| Security review fixes: JWKS refresh, azp patterns, run authorization, voice ownership, language whitelist | Working | `backend/app/auth.py`, `backend/app/runs.py`, `backend/app/routes/voice_live.py` |
+| Race fixes: row locks on the 3-agent limit and publish, 409 on double publish, retest summary per agent | Working | `backend/app/creator.py`, `backend/app/improvement.py` |
+| Fair grading: genuine exam callers give real verification details | Working | `backend/app/training.py` (`case_turns`) |
+| House-agent duels (admin only, never offered to players) | Working | `backend/app/duels.py`, `frontend/components/admin/DuelPanel.tsx` |
+| Break notifications (header bell) | Working | `/me/notifications`, `frontend/components/NotificationBell.tsx` |
+| Share challenge link on agent pages | Working | `frontend/app/agents/[id]/page.tsx` |
+| Access screens: owner-only Defend page, admins-only lab (`/me`) | Working | `frontend/app/agents/[id]/owner`, `frontend/app/admin` |
+| Arena wall collapses repeated events (×N) | Working | `backend/app/routes/wall.py` |
+| `/ready` check (database, Mistral key) and JSON access log without query strings | Working | `backend/app/main.py` |
+| CI on every push: backend pytest, frontend vitest, `next build` | Working | `.github/workflows/ci.yml` |
+| 3D village base (textures, lighting, troop queue) | Working | `frontend/components/base/` |
+| Hosted backend | Laptop only | Cloudflare quick tunnel during development; see [Deploy](#deploy) |
 
 ## In progress
 
-Unfinished work is saved on branches; [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md) lists each one and the open bugs.
+Still in development, not public yet. The full checklist is [docs/PRODUCTION_BACKLOG.md](docs/PRODUCTION_BACKLOG.md).
 
-- 3D village textures, lighting and troop animation (`wip/ac5dcbaa736340f79`).
-- Security review fixes: voice mode and run-ownership checks, language whitelist, no arena runs on your own agent, caps on retest and placement jobs (`wip/afef77894b6893cda`).
-- UI polish: access-denied states, arena wall ticker dedupe, readable player names (`wip/aeed5ceba45d7649c`).
-- A deliberately weak training-dummy agent for new players, and fairer placement grades for careful agents.
-- Public `/events` feed still includes run ids (ownership checks stop misuse; ids will become opaque).
+- Delete leftover QA test agents (`backend/scripts/cleanup_agents.py` is ready).
+- Going public needs accounts and hosting: a hosted backend (Render, Fly.io or Railway, using `backend/Dockerfile`), a Clerk production instance and custom domain, `OPEN_ACCESS=0`, and rotated database and API keys.
+- Usage limits and duel jobs live in memory; move them to the database or Redis when the backend runs on more than one instance.
 
 ## Roadmap and future
 
 **Next (weeks)**
 - Hosted backend instead of a laptop tunnel (Docker image is ready in `backend/Dockerfile`).
-- Strict ownership back on after the event (`OPEN_ACCESS=0`), with company workspaces for shared agents.
+- Strict ownership back on before launch (`OPEN_ACCESS=0`), with company workspaces for shared agents.
 - Stripe test-mode First Blood bounties on house agents.
-- Agent duels: two owners' agents defend the same mission; the crowd decides who holds longer.
-- Public and private sharing: a try-my-agent link, an embed widget and a private API endpoint.
-- CI regression check as a GitHub Action: every past break replays on each prompt change.
-- Notifications when your agent is broken or climbs the leaderboard.
+- An embed widget and a private API endpoint for agents (the share link is done).
+- A ready-made GitHub Action around `selfhost/run_agent.py --check`, so owners replay every past break on each prompt change.
+- Email notifications and leaderboard alerts (in-app break notifications are done).
 
 **Later (months)**
 - Company private arenas and invite-only arenas, where staff attack their own agents (security training at the same time).
-- Export package: instructions, knowledge, regression suite and grade report, ready to take to production.
+- Signed export packages and a one-click deploy of an exported agent (export and the self-host runner are done).
 - Robustness report a company can show its regulator or auditor.
 - More streams: letting agent, IT helpdesk, HR, airline, coding agent, smart home.
 - Heist chains across agents: break the assistant to get a detail that unlocks the bank.
@@ -297,7 +311,7 @@ Red Room is built so only cause-level fixes pass. The analyst names the cause ("
 
 ## Taking an agent to a bank, and the money
 
-An owner can export a hardened agent as a package: its instructions, its knowledge, the regression suite (every attack it learned to stop) and the grade report. Three routes from there:
+An owner can export a hardened agent as a package: its instructions, its knowledge, the regression suite (every attack it learned to stop) and the grade report. This works today: "Export agent" on the Defend page downloads `<agent>.redroom.json`, and [selfhost/run_agent.py](selfhost/README.md) runs it on the Mistral API, open-weight Mistral on vLLM, or Ollama on a laptop. `--check` replays every past attack and fails if the agent calls a sensitive tool. Three routes from there:
 
 ```mermaid
 flowchart TD
