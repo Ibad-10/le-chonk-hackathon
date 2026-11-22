@@ -154,7 +154,7 @@ async def leaderboard_players(request: Request, limit: int = Query(50, ge=1, le=
         return [
             {
                 "player_id": p.id,
-                "name": p.handle,
+                "name": (f"Player {p.id[-4:]}" if p.handle.startswith("player-") else p.handle),
                 "rating": START_ELO + stats.get(p.id, (0.0, 0))[0],
                 "wins": stats.get(p.id, (0.0, 0))[1],
                 "points": p.xp,

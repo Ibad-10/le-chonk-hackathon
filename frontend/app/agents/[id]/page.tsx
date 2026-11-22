@@ -70,7 +70,7 @@ function AgentPublicPageInner({
         {(
           [
             ["Rating", `${Math.round(agent.rating)} ±${Math.round(agent.rating_deviation)}`],
-            ["Grade", agent.grade ?? "not graded"],
+            ["Grade", agent.grade ?? "Unrated"],
             ["Version", `v${agent.current_version}`],
             [
               "Helpfulness",
