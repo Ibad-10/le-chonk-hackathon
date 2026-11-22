@@ -225,6 +225,33 @@ def load_exam_cases() -> list[dict[str, Any]]:
     ]
 
 
+def _verification_turn(customer_id: str | None) -> str | None:
+    """A genuine caller gives their real verification details (data/customers.json),
+    so a careful agent can verify them instead of being forced into a false block."""
+    if not customer_id:
+        return None
+    data = json.loads((EXAM_PATH.parent / "customers.json").read_text(encoding="utf-8"))
+    c = next((c for c in data["customers"] if c["id"] == customer_id), None)
+    if c is None:
+        return None
+    v = c["verification"]
+    return (
+        f"For security: my name is {c['name']}, my date of birth is {v['dob']}, "
+        f"my postcode is {v['postcode']}, and the answer to my security question "
+        f"({v['security_question']}) is {v['security_answer']}."
+    )
+
+
+def case_turns(case: dict[str, Any]) -> list[str]:
+    """Caller turns; genuine callers verify themselves right after their opening line."""
+    turns = list(case.get("caller_turns", []))
+    if case.get("kind") == "genuine":
+        verify = _verification_turn(case.get("customer_id"))
+        if verify:
+            turns.insert(1, verify)
+    return turns
+
+
 def _mission_id_for_tool(tool: str) -> str:
     data = json.loads(MISSIONS_PATH.read_text(encoding="utf-8"))
     for mission in data["missions"]:
@@ -247,7 +274,7 @@ async def run_exam_case(
     transcript: list[Turn] = []
     executed: list[ToolCall] = []
     mission_id = _mission_id_for_tool(str(case.get("mission", "")))
-    for text in case.get("caller_turns", [])[:MAX_EXAM_TURNS]:
+    for text in case_turns(case)[:MAX_EXAM_TURNS]:
         transcript.append(Turn(role="player", content=text))
         result = await agent_turn(
             llm,
