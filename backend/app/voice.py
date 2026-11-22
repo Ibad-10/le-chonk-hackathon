@@ -54,6 +54,7 @@ def voice_id_for(agent_id: str) -> str:
         "bank-ava": settings.voxtral_voice_ava,
         "shop-max": settings.voxtral_voice_max,
         "assistant-pip": settings.voxtral_voice_pip,
+        "bank-rex": settings.voxtral_voice_max,
     }
     return voices.get(agent_id) or settings.voxtral_voice_ava
 

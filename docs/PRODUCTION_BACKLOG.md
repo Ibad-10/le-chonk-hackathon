@@ -11,7 +11,7 @@ Still in development (not public). Goal: every feature, page and API at producti
 - [ ] Structured logging and a `/health` that also checks the database and Mistral key.
 
 ## Game and product
-- [ ] Rex, a deliberately weak training-dummy agent for new players and demos.
+- [x] Rex, a deliberately weak training-dummy agent for new players and demos.
 - [ ] Remove QA test agents (`qa-nova-6663b2`, `qa-weak-414c60`) with an admin cleanup script.
 - [ ] Fair placement grades: genuine callers give the right verification details so careful agents aren't graded D.
 - [ ] Arena wall and home ticker: dedupe repeated events, title clear of the sticky nav.

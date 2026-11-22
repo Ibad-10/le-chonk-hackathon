@@ -23,7 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 TARGETS_DIR = REPO_ROOT / "targets"
 
 # Red Room's own house agents (the three streams: banking, support, assistant)
-HOUSE_AGENT_IDS = ("bank-ava", "shop-max", "assistant-pip")
+HOUSE_AGENT_IDS = ("bank-ava", "shop-max", "assistant-pip", "bank-rex")
 
 
 def _now() -> datetime:
