@@ -281,3 +281,26 @@ def test_public_event_rows_written_on_break(tmp_path):
     for r in rows:
         # payload holds tactic family + version only — never transcript text
         assert set(r.payload.keys()) <= {"tactic_family", "version", "run_id"}
+
+
+def test_events_collapse_repeats(tmp_path):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from sqlmodel import Session
+
+    from app.db import PublicEvent, init_db, make_engine, seed_house_agents
+    from app.routes.wall import router
+
+    engine = make_engine(f"sqlite:///{tmp_path}/w.db")
+    init_db(engine)
+    seed_house_agents(engine)
+    with Session(engine) as s:
+        for _ in range(3):
+            s.add(PublicEvent(type="version_published", agent_id="bank-ava", payload={"version": 1}))
+        s.add(PublicEvent(type="agent_broken", agent_id="bank-ava", payload={"tactic_family": "urgency"}))
+        s.commit()
+    app = FastAPI()
+    app.state.db_engine = engine
+    app.include_router(router)
+    events = TestClient(app).get("/events").json()
+    assert [e["count"] for e in events] == [1, 3]

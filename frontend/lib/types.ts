@@ -280,6 +280,8 @@ export interface ArenaEvent {
   id: string;
   kind: ArenaEventKind;
   agent_name: string;
+  /** Consecutive identical events collapsed into one line. */
+  count?: number;
   tactic_family: string | null; // e.g. "emotional_emergency"; null for publishes
   version: string | null; // for version_published
   at: string; // ISO datetime

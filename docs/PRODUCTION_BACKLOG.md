@@ -5,7 +5,7 @@ Still in development (not public). Goal: every feature, page and API at producti
 ## Quality and safety
 - [x] CI: GitHub Action runs backend pytest, frontend vitest and `next build` on every push and PR.
 - [x] Per-player usage limits on Mistral-backed routes (messages, voice turns, analyse, retest, placement) so no one can run up the API bill.
-- [ ] Opaque ids on the public `/events` feed (no run ids).
+- [x] Opaque ids on the public `/events` feed (no run ids).
 - [ ] Race fixes: publish vs draft, the 3-agent limit, retest summary filtered by agent.
 - [ ] Access-denied and error states on every page (owner, base, admin, challenge), ready for `OPEN_ACCESS=0`.
 - [ ] Structured logging and a `/health` that also checks the database and Mistral key.
@@ -14,7 +14,7 @@ Still in development (not public). Goal: every feature, page and API at producti
 - [x] Rex, a deliberately weak training-dummy agent for new players and demos.
 - [ ] Remove QA test agents (`qa-nova-6663b2`, `qa-weak-414c60`) with an admin cleanup script.
 - [ ] Fair placement grades: genuine callers give the right verification details so careful agents aren't graded D.
-- [ ] Arena wall and home ticker: dedupe repeated events, title clear of the sticky nav.
+- [x] Arena wall and home ticker: dedupe repeated events (count shown).
 - [ ] Try-my-agent share link: a public page that opens a raid on your agent.
 - [ ] Agent duels.
 - [ ] Notifications when your agent is broken.

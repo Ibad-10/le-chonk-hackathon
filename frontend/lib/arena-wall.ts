@@ -26,8 +26,9 @@ export function nextWallView(view: WallView): WallView {
 
 /** One-line, privacy-safe ticker text: tactic family only, never transcripts. */
 export function formatArenaEvent(ev: ArenaEvent): string {
+  const times = ev.count && ev.count > 1 ? ` ×${ev.count}` : "";
   if (ev.kind === "agent_broken") {
-    return `${ev.agent_name} broken${ev.tactic_family ? ` · ${ev.tactic_family.replace(/_/g, " ")}` : ""}`;
+    return `${ev.agent_name} broken${ev.tactic_family ? ` · ${ev.tactic_family.replace(/_/g, " ")}` : ""}${times}`;
   }
-  return `${ev.agent_name} published v${ev.version ?? "?"}`;
+  return `${ev.agent_name} published v${ev.version ?? "?"}${times}`;
 }

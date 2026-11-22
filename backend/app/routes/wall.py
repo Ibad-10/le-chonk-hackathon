@@ -43,9 +43,13 @@ async def list_events(request: Request, limit: int = Query(50, ge=1, le=200)):
             a.id: a.name
             for a in session.exec(select(Agent)).all()
         }
-    events = []
+    events: list[dict] = []
     for row in rows:
         payload = row.payload or {}
+        key = (row.type, row.agent_id, payload.get("version"), payload.get("tactic_family"))
+        if events and events[-1]["_key"] == key:  # collapse repeats into one line with a count
+            events[-1]["count"] += 1
+            continue
         events.append(
             {
                 "id": row.id,
@@ -57,8 +61,12 @@ async def list_events(request: Request, limit: int = Query(50, ge=1, le=200)):
                 "version": payload.get("version"),
                 "created_at": row.created_at.isoformat(),
                 "at": row.created_at.isoformat(),
+                "count": 1,
+                "_key": key,
             }
         )
+    for e in events:
+        del e["_key"]
     return events
 
 
