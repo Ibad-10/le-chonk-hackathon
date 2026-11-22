@@ -20,6 +20,8 @@ from app.db import Agent, Player, RunRow
 from app.runs import START_ELO
 from app.improvement import MAX_INSTRUCTIONS_CHARS, agent_stats, public_agent
 
+from app.ratelimit import limit
+
 router = APIRouter()
 
 
@@ -70,7 +72,7 @@ def _owned(request: Request, agent_id: str, player: Player) -> Agent:
     return agent
 
 
-@router.post("/agents", status_code=201)
+@router.post("/agents", status_code=201, dependencies=[limit("create")])
 async def create_agent_route(
     req: CreateAgentRequest, request: Request, player: Player = Depends(current_player)
 ):
@@ -105,7 +107,7 @@ async def patch_agent(
     return public_agent(agent, _engine(request), _run_service(request))
 
 
-@router.post("/agents/{agent_id}/placement")
+@router.post("/agents/{agent_id}/placement", dependencies=[limit("retest")])
 async def start_placement(agent_id: str, request: Request, player: Player = Depends(current_player)):
     _owned(request, agent_id, player)
     return {"job_id": request.app.state.placement_service.start(agent_id)}

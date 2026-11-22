@@ -28,6 +28,8 @@ from app.routes.runs import START_ERRORS, start_errors
 from app.runs import RunNotFound, RunService
 from app.voice import VoiceService
 
+from app.ratelimit import limit
+
 router = APIRouter()
 
 MAX_AUDIO_BYTES = 5 * 1024 * 1024  # one push-to-talk clip
@@ -54,7 +56,7 @@ def _own_session(service: VoiceService, session_id: str, player: Player) -> None
         raise HTTPException(status_code=403, detail="not your run")
 
 
-@router.post("/voice/sessions")
+@router.post("/voice/sessions", dependencies=[limit("start")])
 async def start_voice_session(
     req: StartVoiceSession, request: Request, player: Player = Depends(current_player)
 ):
@@ -71,7 +73,7 @@ async def start_voice_session(
         raise start_errors(exc)
 
 
-@router.post("/voice/sessions/{session_id}/turn")
+@router.post("/voice/sessions/{session_id}/turn", dependencies=[limit("voice")])
 async def voice_turn(
     session_id: str,
     request: Request,

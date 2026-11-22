@@ -203,7 +203,9 @@ function PlayPageInner({ agentId }: { agentId: string }) {
                   ? "You don't have access to this agent."
                   : /\b409\b/.test(msg)
                     ? "This agent is rebuilding after a raid. Try again shortly."
-                    : "Couldn't start the raid. Try again."
+                    : /429/.test(msg)
+                      ? "Too many raids in a minute. Take a breath and try again."
+                      : "Couldn't start the raid. Try again."
           );
         }
       }

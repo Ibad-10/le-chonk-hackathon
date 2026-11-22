@@ -22,6 +22,8 @@ from app.runs import (
     RunService,
 )
 
+from app.ratelimit import check as check_rate, limit
+
 router = APIRouter()
 
 
@@ -68,7 +70,7 @@ def _own_run(service: RunService, run_id: str, player: Player) -> None:
         raise HTTPException(status_code=403, detail="not your run")
 
 
-@router.post("/runs")
+@router.post("/runs", dependencies=[limit("start")])
 async def start_run(req: StartRunRequest, request: Request, player: Player = Depends(current_player)):
     service = get_service(request)
     try:
@@ -94,7 +96,7 @@ async def start_run(req: StartRunRequest, request: Request, player: Player = Dep
     }
 
 
-@router.post("/runs/{run_id}/message")
+@router.post("/runs/{run_id}/message", dependencies=[limit("chat")])
 async def send_message(
     run_id: str, req: MessageRequest, request: Request, player: Player = Depends(current_player)
 ):
@@ -116,6 +118,7 @@ async def stream_message(
     the final `event: done` carries tool_events, ended and outcome (tool calls
     still go through the sandbox executor and win checks before it).
     """
+    check_rate(player.id, "chat")
     service = get_service(request)
     _own_run(service, run_id, player)
 

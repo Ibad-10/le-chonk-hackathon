@@ -3,8 +3,8 @@
 Still in development (not public). Goal: every feature, page and API at production quality before launch. Shipped one at a time; each item lands with tests, a green build and a push to `main`.
 
 ## Quality and safety
-- [ ] CI: GitHub Action runs backend pytest, frontend vitest and `next build` on every push and PR.
-- [ ] Per-player usage limits on Mistral-backed routes (messages, voice turns, analyse, retest, placement) so no one can run up the API bill.
+- [x] CI: GitHub Action runs backend pytest, frontend vitest and `next build` on every push and PR.
+- [x] Per-player usage limits on Mistral-backed routes (messages, voice turns, analyse, retest, placement) so no one can run up the API bill.
 - [ ] Opaque ids on the public `/events` feed (no run ids).
 - [ ] Race fixes: publish vs draft, the 3-agent limit, retest summary filtered by agent.
 - [ ] Access-denied and error states on every page (owner, base, admin, challenge), ready for `OPEN_ACCESS=0`.

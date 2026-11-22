@@ -22,6 +22,8 @@ from app.improvement import (
     version_diff,
 )
 
+from app.ratelimit import limit
+
 router = APIRouter()
 
 
@@ -64,7 +66,7 @@ async def get_logbook(agent_id: str, request: Request, player: Player = Depends(
     return {"entries": [e.model_dump(mode="json") for e in entries]}
 
 
-@router.post("/agents/{agent_id}/analyse")
+@router.post("/agents/{agent_id}/analyse", dependencies=[limit("analyse")])
 async def post_analyse(agent_id: str, request: Request, player: Player = Depends(current_player)):
     _owner_agent(request, agent_id, player)
     llm = _retest_service(request).llm
@@ -94,7 +96,7 @@ async def get_draft_route(
     return draft.model_dump(mode="json")
 
 
-@router.post("/agents/{agent_id}/drafts/{draft_version}/retest")
+@router.post("/agents/{agent_id}/drafts/{draft_version}/retest", dependencies=[limit("retest")])
 async def post_retest(
     agent_id: str, draft_version: int, request: Request, player: Player = Depends(current_player)
 ):
